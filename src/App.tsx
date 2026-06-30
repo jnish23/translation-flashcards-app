@@ -128,7 +128,7 @@ function DeckView({
   );
 }
 
-function PhrasesView({ cards }: { cards: Card[] }) {
+function PhrasesView({ cards, onDelete }: { cards: Card[]; onDelete: (prompt: string, kanji: string) => void }) {
   const seen = new Map<string, Card>();
   for (const card of cards) {
     const key = `${card.prompt}|||${card.kanji}`;
@@ -164,6 +164,13 @@ function PhrasesView({ cards }: { cards: Card[] }) {
               <span className="phrase-row__kanji">{card.kanji}</span>
               <span className="phrase-row__reading">{card.reading}</span>
             </div>
+            <button
+              className="card-row__delete"
+              onClick={() => onDelete(card.prompt, card.kanji)}
+              aria-label={`Delete phrase ${card.prompt}`}
+            >
+              ✕
+            </button>
           </li>
         ))}
       </ul>
@@ -220,6 +227,15 @@ export default function App() {
 
   function handleDelete(id: string) {
     setCards(removeCard(id));
+  }
+
+  function handleDeletePhrase(prompt: string, kanji: string) {
+    const ids = cards.filter((c) => c.prompt === prompt && c.kanji === kanji).map((c) => c.id);
+    let updated = cards;
+    for (const id of ids) {
+      updated = removeCard(id);
+    }
+    setCards(updated);
   }
 
   function handleUpdate(card: Card) {
@@ -338,7 +354,7 @@ export default function App() {
         )}
 
         {view === 'phrases' && (
-          <PhrasesView cards={cards} />
+          <PhrasesView cards={cards} onDelete={handleDeletePhrase} />
         )}
       </main>
     </div>
