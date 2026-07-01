@@ -740,6 +740,67 @@
 
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Settings view                                                        */
+/* ------------------------------------------------------------------ */
+
+.settings-view {
+  max-width: 480px;
+}
+
+.settings-heading {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0 0 24px;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-hint {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.5;
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.82em;
+    background: var(--code-bg);
+    border-radius: 3px;
+    padding: 1px 4px;
+  }
+}
+
+.settings-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  font-size: 0.95rem;
+  font-family: var(--mono);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+  transition: border-color 0.15s;
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-bg);
+  }
+}
+
+.settings-save-btn {
+  align-self: flex-start;
+}
+
+/* ------------------------------------------------------------------ */
+
 .card-row__delete {
   flex-shrink: 0;
   width: 28px;

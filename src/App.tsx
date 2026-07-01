@@ -7,7 +7,7 @@ import { ReviewSession } from './ReviewSession';
 import { exportToAnki } from './exportAnki';
 import './App.css';
 
-const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined;
+const API_KEY_STORAGE = 'apiKey';
 
 function makeCard(
   option: TranslationOption,
@@ -178,8 +178,48 @@ function PhrasesView({ cards, onDelete }: { cards: Card[]; onDelete: (prompt: st
   );
 }
 
+function SettingsView() {
+  const [input, setInput] = useState(() => localStorage.getItem(API_KEY_STORAGE) ?? '');
+  const [saved, setSaved] = useState(false);
+
+  function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    localStorage.setItem(API_KEY_STORAGE, input.trim());
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  return (
+    <div className="settings-view">
+      <h2 className="settings-heading">Settings</h2>
+      <form className="settings-form" onSubmit={handleSave}>
+        <label htmlFor="api-key" className="input-label">
+          API Key
+        </label>
+        <p className="settings-hint">
+          Paste your Anthropic key (<code>sk-ant-…</code>) or Google Gemini key.
+          Stored only in your browser's localStorage — never sent anywhere else.
+        </p>
+        <input
+          id="api-key"
+          type="password"
+          className="settings-input"
+          value={input}
+          onChange={(e) => { setInput(e.target.value); setSaved(false); }}
+          placeholder="sk-ant-..."
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <button className="translate-btn settings-save-btn" type="submit" disabled={!input.trim()}>
+          {saved ? 'Saved!' : 'Save key'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default function App() {
-  const [view, setView] = useState<'translate' | 'deck' | 'review' | 'phrases'>('translate');
+  const [view, setView] = useState<'translate' | 'deck' | 'review' | 'phrases' | 'settings'>('translate');
   const [phrase, setPhrase] = useState('');
   const [context, setContext] = useState('');
   const [options, setOptions] = useState<TranslationOption[]>([]);
@@ -190,10 +230,9 @@ export default function App() {
   async function handleTranslate() {
     if (!phrase.trim()) return;
 
-    if (!API_KEY) {
-      setError(
-        'No API key found.\n\nCreate .env.local in the project root:\n\nVITE_ANTHROPIC_API_KEY=your-key-here\n\nThen restart the dev server.',
-      );
+    const apiKey = localStorage.getItem(API_KEY_STORAGE);
+    if (!apiKey) {
+      setError('No API key set. Go to Settings and paste your Anthropic or Gemini key.');
       return;
     }
 
@@ -202,7 +241,7 @@ export default function App() {
     setOptions([]);
 
     try {
-      const result = await translate(phrase, context, API_KEY);
+      const result = await translate(phrase, context, apiKey);
       setOptions(result.options);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -278,6 +317,12 @@ export default function App() {
             onClick={() => setView('phrases')}
           >
             Phrases
+          </button>
+          <button
+            className={`nav-tab${view === 'settings' ? ' nav-tab--active' : ''}`}
+            onClick={() => setView('settings')}
+          >
+            Settings
           </button>
         </nav>
       </header>
@@ -356,6 +401,8 @@ export default function App() {
         {view === 'phrases' && (
           <PhrasesView cards={cards} onDelete={handleDeletePhrase} />
         )}
+
+        {view === 'settings' && <SettingsView />}
       </main>
     </div>
   );
