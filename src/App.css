@@ -738,6 +738,34 @@
   min-width: 0;
 }
 
+@media (max-width: 640px) {
+  .phrase-row {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .phrase-row__japanese {
+    order: 3;
+    flex: 1 1 100%;
+    max-width: 100%;
+    overflow: visible;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .phrase-row__kanji {
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .phrase-row__reading {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
