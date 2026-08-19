@@ -85,6 +85,32 @@
   margin-top: 12px;
 }
 
+.input-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.clear-context-btn {
+  padding: 2px 10px;
+  font-size: 0.78rem;
+  font-family: inherit;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+
+  &:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+}
+
 .optional-tag {
   font-weight: 400;
   font-size: 0.78rem;
@@ -189,7 +215,22 @@
   color: var(--text);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  margin: 0 0 6px;
+}
+
+.results-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 1rem;
+  color: var(--text-h);
   margin: 0 0 16px;
+  line-height: 1.45;
+}
+
+.results-prompt__context {
+  font-size: 0.85rem;
+  color: var(--text);
 }
 
 .options-grid {

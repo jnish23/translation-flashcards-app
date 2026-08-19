@@ -308,6 +308,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [cards, setCards] = useState<Card[]>(() => loadCards());
   const [hasKey, setHasKey] = useState(() => !!localStorage.getItem(API_KEY_STORAGE));
+  // What the options on screen were actually generated from. Kept separate
+  // from the inputs, which are cleared for the next phrase while the results
+  // are still on screen and savable.
+  const [submitted, setSubmitted] = useState<{ phrase: string; context: string } | null>(null);
 
   async function handleTranslate() {
     if (!phrase.trim()) return;
@@ -325,6 +329,10 @@ export default function App() {
     try {
       const result = await translate(phrase, context, apiKey);
       setOptions(result.options);
+      setSubmitted({ phrase: phrase.trim(), context: context.trim() });
+      // Only the phrase is cleared: a run of phrases usually shares one
+      // context, so it stays until explicitly cleared.
+      setPhrase('');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -339,9 +347,14 @@ export default function App() {
   }
 
   function handleSave(option: TranslationOption, addRecognition: boolean) {
-    let updated = persistCard(makeCard(option, phrase, context, 'production'));
+    if (!submitted) return;
+    let updated = persistCard(
+      makeCard(option, submitted.phrase, submitted.context, 'production'),
+    );
     if (addRecognition) {
-      updated = persistCard(makeCard(option, phrase, context, 'recognition'));
+      updated = persistCard(
+        makeCard(option, submitted.phrase, submitted.context, 'recognition'),
+      );
     }
     setCards(updated);
   }
@@ -442,10 +455,21 @@ export default function App() {
                 rows={3}
               />
 
-              <label htmlFor="context" className="input-label input-label--optional">
-                Context{' '}
-                <span className="optional-tag">optional</span>
-              </label>
+              <div className="input-label-row">
+                <label htmlFor="context" className="input-label">
+                  Context{' '}
+                  <span className="optional-tag">optional</span>
+                </label>
+                {context.trim() && (
+                  <button
+                    type="button"
+                    className="clear-context-btn"
+                    onClick={() => setContext('')}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
               <textarea
                 id="context"
                 className="input-textarea input-textarea--context"
@@ -475,9 +499,19 @@ export default function App() {
               </div>
             )}
 
-            {options.length > 0 && (
+            {options.length > 0 && submitted && (
               <section className="results-section">
                 <h2 className="results-heading">3 Options</h2>
+                {/* The phrase box is cleared on submit, so echo back what
+                    these options were generated from. */}
+                <p className="results-prompt">
+                  {submitted.phrase}
+                  {submitted.context && (
+                    <span className="results-prompt__context">
+                      {submitted.context}
+                    </span>
+                  )}
+                </p>
                 <div className="options-grid">
                   {options.map((opt, i) => (
                     <OptionCard key={i} option={opt} onSave={handleSave} />
