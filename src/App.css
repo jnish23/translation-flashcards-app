@@ -823,8 +823,139 @@
   }
 }
 
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
 .settings-save-btn {
   align-self: flex-start;
+}
+
+.settings-remove-btn {
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+
+  &:hover {
+    border-color: #dc2626;
+    color: #dc2626;
+  }
+}
+
+.provider-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+.key-sources {
+  list-style: none;
+  margin: 4px 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.key-sources li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--code-bg);
+}
+
+.key-sources a {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+  width: fit-content;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.key-sources__note {
+  font-size: 0.8rem;
+  color: var(--text);
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+  }
+}
+
+.settings-status {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.settings-status--ok {
+  color: #059669;
+}
+
+.settings-status--error {
+  color: #dc2626;
+}
+
+/* First-run prompt on the translate screen */
+
+.setup-callout {
+  margin-bottom: 28px;
+  padding: 16px 18px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: var(--accent-bg);
+}
+
+.setup-callout__title {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--text-h);
+  margin-bottom: 4px;
+}
+
+.setup-callout__body {
+  margin: 0 0 12px;
+  font-size: 0.88rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.setup-callout__btn {
+  padding: 7px 18px;
+  font-size: 0.88rem;
+  font-family: inherit;
+  font-weight: 500;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+
+  &:hover {
+    opacity: 0.88;
+  }
 }
 
 /* ------------------------------------------------------------------ */

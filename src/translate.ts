@@ -21,9 +21,53 @@ Schema:
 
 Vary the 3 options meaningfully in register or nuance — do not return near-duplicates.`;
 
-function detectProvider(apiKey: string): 'anthropic' | 'google' {
+const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
+const GOOGLE_MODEL = 'gemini-3.1-flash-lite';
+
+export type Provider = 'anthropic' | 'google';
+
+export function detectProvider(apiKey: string): Provider {
   if (apiKey.startsWith('sk-ant-')) return 'anthropic';
   return 'google';
+}
+
+export const PROVIDER_LABEL: Record<Provider, string> = {
+  anthropic: 'Anthropic',
+  google: 'Google Gemini',
+};
+
+function describeKeyError(err: unknown): string {
+  const status = (err as { status?: number } | null)?.status;
+  const raw = err instanceof Error ? err.message : String(err);
+
+  if (status === 401 || status === 403 || /api[\s_-]?key|unauthor|permission denied/i.test(raw)) {
+    return 'That key was rejected. Check you copied the whole key, with no trailing spaces.';
+  }
+  if (/failed to fetch|networkerror|load failed/i.test(raw)) {
+    return 'Could not reach the provider. Check your connection and try again.';
+  }
+  return raw;
+}
+
+/**
+ * Proves a key works before we store it. Both calls are metadata-only, so
+ * validating a key costs nothing in tokens.
+ */
+export async function validateApiKey(apiKey: string): Promise<void> {
+  try {
+    if (detectProvider(apiKey) === 'anthropic') {
+      const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+      await client.models.list({ limit: 1 });
+    } else {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      await genAI.getGenerativeModel({ model: GOOGLE_MODEL }).countTokens('ok');
+    }
+  } catch (err) {
+    // A 429 means the request authenticated and then hit a quota — the key
+    // itself is good, which is all we are checking for here.
+    if ((err as { status?: number } | null)?.status === 429) return;
+    throw new Error(describeKeyError(err));
+  }
 }
 
 function stripFences(raw: string): string {
@@ -70,7 +114,7 @@ async function translateWithAnthropic(
     : `Phrase: ${phrase}`;
 
   const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: ANTHROPIC_MODEL,
     max_tokens: 1024,
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: userContent }],
@@ -91,7 +135,7 @@ async function translateWithGoogle(
 ): Promise<TranslationResponse> {
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    model: 'gemini-3.1-flash-lite',
+    model: GOOGLE_MODEL,
     systemInstruction: SYSTEM_PROMPT,
     generationConfig: {
       responseMimeType: 'application/json',

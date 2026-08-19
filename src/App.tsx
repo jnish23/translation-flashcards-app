@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import { translate } from './translate';
+import {
+  translate,
+  validateApiKey,
+  detectProvider,
+  PROVIDER_LABEL,
+} from './translate';
 import type { TranslationOption, Card } from './types';
 import { loadCards, persistCard, removeCard, updateCard } from './storage';
 import { getDueCards } from './sm2';
@@ -178,41 +183,117 @@ function PhrasesView({ cards, onDelete }: { cards: Card[]; onDelete: (prompt: st
   );
 }
 
-function SettingsView() {
+function SettingsView({
+  hasKey,
+  onKeyChange,
+}: {
+  hasKey: boolean;
+  onKeyChange: () => void;
+}) {
   const [input, setInput] = useState(() => localStorage.getItem(API_KEY_STORAGE) ?? '');
-  const [saved, setSaved] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'checking' | 'ok' | 'error'>('idle');
+  const [message, setMessage] = useState('');
 
-  function handleSave(e: React.FormEvent) {
+  const trimmed = input.trim();
+  const provider = trimmed ? detectProvider(trimmed) : null;
+
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    localStorage.setItem(API_KEY_STORAGE, input.trim());
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setStatus('checking');
+    setMessage('');
+
+    try {
+      await validateApiKey(trimmed);
+      localStorage.setItem(API_KEY_STORAGE, trimmed);
+      onKeyChange();
+      setStatus('ok');
+      setMessage(`${PROVIDER_LABEL[detectProvider(trimmed)]} key verified and saved.`);
+    } catch (err) {
+      setStatus('error');
+      setMessage(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  function handleRemove() {
+    localStorage.removeItem(API_KEY_STORAGE);
+    setInput('');
+    setStatus('idle');
+    setMessage('');
+    onKeyChange();
   }
 
   return (
     <div className="settings-view">
       <h2 className="settings-heading">Settings</h2>
+
       <form className="settings-form" onSubmit={handleSave}>
         <label htmlFor="api-key" className="input-label">
           API Key
+          {provider && (
+            <span className="provider-badge">{PROVIDER_LABEL[provider]}</span>
+          )}
         </label>
+
         <p className="settings-hint">
-          Paste your Anthropic key (<code>sk-ant-…</code>) or Google Gemini key.
-          Stored only in your browser's localStorage — never sent anywhere else.
+          Translations run on your own API key, so you'll need one of these. The
+          key is stored only in this browser and goes straight to the provider —
+          it is never sent anywhere else.
         </p>
+
+        <ul className="key-sources">
+          <li>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer">
+              Google AI Studio
+            </a>
+            <span className="key-sources__note">
+              Free tier, no credit card. Easiest place to start.
+            </span>
+          </li>
+          <li>
+            <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
+              Anthropic Console
+            </a>
+            <span className="key-sources__note">
+              Starts with <code>sk-ant-</code>. Pay-as-you-go, needs credit up front.
+            </span>
+          </li>
+        </ul>
+
         <input
           id="api-key"
           type="password"
           className="settings-input"
           value={input}
-          onChange={(e) => { setInput(e.target.value); setSaved(false); }}
-          placeholder="sk-ant-..."
+          onChange={(e) => {
+            setInput(e.target.value);
+            setStatus('idle');
+            setMessage('');
+          }}
+          placeholder="Paste a Gemini or Anthropic key"
           autoComplete="off"
           spellCheck={false}
         />
-        <button className="translate-btn settings-save-btn" type="submit" disabled={!input.trim()}>
-          {saved ? 'Saved!' : 'Save key'}
-        </button>
+
+        <div className="settings-actions">
+          <button
+            className="translate-btn settings-save-btn"
+            type="submit"
+            disabled={!trimmed || status === 'checking'}
+          >
+            {status === 'checking' ? 'Checking…' : 'Verify & save'}
+          </button>
+          {hasKey && (
+            <button type="button" className="settings-remove-btn" onClick={handleRemove}>
+              Remove key
+            </button>
+          )}
+        </div>
+
+        {message && (
+          <p className={`settings-status settings-status--${status}`} role="status">
+            {message}
+          </p>
+        )}
       </form>
     </div>
   );
@@ -226,13 +307,14 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cards, setCards] = useState<Card[]>(() => loadCards());
+  const [hasKey, setHasKey] = useState(() => !!localStorage.getItem(API_KEY_STORAGE));
 
   async function handleTranslate() {
     if (!phrase.trim()) return;
 
     const apiKey = localStorage.getItem(API_KEY_STORAGE);
     if (!apiKey) {
-      setError('No API key set. Go to Settings and paste your Anthropic or Gemini key.');
+      setView('settings');
       return;
     }
 
@@ -330,6 +412,22 @@ export default function App() {
       <main className="app__main">
         {view === 'translate' && (
           <>
+            {!hasKey && (
+              <div className="setup-callout">
+                <strong className="setup-callout__title">One-time setup</strong>
+                <p className="setup-callout__body">
+                  Translations run on your own API key. A Google Gemini key is
+                  free and takes about a minute to create.
+                </p>
+                <button
+                  className="setup-callout__btn"
+                  onClick={() => setView('settings')}
+                >
+                  Add API key
+                </button>
+              </div>
+            )}
+
             <section className="input-section">
               <label htmlFor="phrase" className="input-label">
                 What do you want to say?
@@ -402,7 +500,12 @@ export default function App() {
           <PhrasesView cards={cards} onDelete={handleDeletePhrase} />
         )}
 
-        {view === 'settings' && <SettingsView />}
+        {view === 'settings' && (
+          <SettingsView
+            hasKey={hasKey}
+            onKeyChange={() => setHasKey(!!localStorage.getItem(API_KEY_STORAGE))}
+          />
+        )}
       </main>
     </div>
   );
