@@ -43,9 +43,11 @@ export default defineConfig({
         // carrying the API key is ever written to the cache.
         runtimeCaching: [],
       },
+      // The service worker is intentionally off in dev: it adds nothing to the
+      // edit/reload loop and its caching makes changes look stale. Verify PWA
+      // behaviour against a production build (`npm run preview`).
       devOptions: {
-        enabled: true,
-        type: 'module',
+        enabled: false,
       },
     }),
   ],
