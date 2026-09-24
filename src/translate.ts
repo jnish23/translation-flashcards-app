@@ -209,18 +209,38 @@ async function translateWithDeepSeek(
     body: JSON.stringify({
       model: DEEPSEEK_MODEL,
       max_tokens: 1024,
+      // Thinking is on by default. Its reasoning is written to a separate
+      // reasoning_content field and can use up max_tokens before any answer
+      // is produced, leaving `content` empty. A short translation does not
+      // need it, and turning it off is faster and cheaper.
+      thinking: { type: 'disabled' },
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: buildUserContent(phrase, context) },
       ],
     }),
-  })) as { choices?: { message?: { content?: string | null } }[] };
+  })) as {
+    choices?: {
+      finish_reason?: string;
+      message?: { content?: string | null; reasoning_content?: string | null };
+    }[];
+  };
 
-  const raw = data.choices?.[0]?.message?.content ?? '';
-  // DeepSeek documents that JSON mode occasionally returns empty content.
+  const choice = data.choices?.[0];
+  const raw = choice?.message?.content ?? '';
   if (!raw.trim()) {
-    throw new Error('DeepSeek returned an empty response. This happens occasionally — try again.');
+    if (choice?.finish_reason === 'length') {
+      throw new Error(
+        'DeepSeek hit its token limit before writing an answer' +
+          (choice.message?.reasoning_content ? ' (it spent the limit on reasoning).' : '.'),
+      );
+    }
+    // DeepSeek documents that JSON mode occasionally returns empty content.
+    throw new Error(
+      `DeepSeek returned an empty response (finish_reason: ${choice?.finish_reason ?? 'none'}). ` +
+        'This happens occasionally — try again.',
+    );
   }
 
   return parseAndValidate(raw);
