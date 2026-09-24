@@ -226,6 +226,67 @@ async function translateWithDeepSeek(
   return parseAndValidate(raw);
 }
 
+/**
+ * Why a failure is the provider's problem rather than ours, or null if it
+ * isn't. Only these are worth retrying on a backup key: a bad request or an
+ * unparseable response would fail the same way elsewhere and should surface.
+ */
+function providerSideReason(err: unknown): string | null {
+  const status = (err as { status?: number } | null)?.status;
+  if (status === 402) return 'out of balance';
+  if (status === 429) return 'rate limited';
+  if (status === 503 || status === 529) return 'overloaded';
+  if (status === 408 || status === 504) return 'timed out';
+  if (status !== undefined && status >= 500) return `returning server errors (${status})`;
+
+  const message = err instanceof Error ? err.message : String(err);
+  if (/failed to fetch|networkerror|load failed|connection error/i.test(message)) {
+    return 'unreachable';
+  }
+  return null;
+}
+
+export type TranslateOutcome = {
+  response: TranslationResponse;
+  provider: Provider;
+  /** Set when the primary failed and the backup answered instead. */
+  fallback?: { from: Provider; reason: string };
+};
+
+/**
+ * Translates with the primary key, retrying once on the backup key if the
+ * primary provider is down, rate-limited, out of credit, or unreachable.
+ */
+export async function translateWithFallback(
+  phrase: string,
+  context: string,
+  primaryKey: string,
+  backupKey?: string | null,
+): Promise<TranslateOutcome> {
+  const primary = detectProvider(primaryKey);
+  try {
+    return { response: await translate(phrase, context, primaryKey), provider: primary };
+  } catch (err) {
+    const reason = providerSideReason(err);
+    if (!backupKey || !reason) throw err;
+
+    const backup = detectProvider(backupKey);
+    try {
+      return {
+        response: await translate(phrase, context, backupKey),
+        provider: backup,
+        fallback: { from: primary, reason },
+      };
+    } catch (backupErr) {
+      const describe = (e: unknown) => (e instanceof Error ? e.message : String(e));
+      throw new Error(
+        `Primary (${PROVIDER_LABEL[primary]}) failed: ${describe(err)}\n\n` +
+          `Backup (${PROVIDER_LABEL[backup]}) also failed: ${describe(backupErr)}`,
+      );
+    }
+  }
+}
+
 export async function translate(
   phrase: string,
   context: string,

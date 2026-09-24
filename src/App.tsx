@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  translate,
+  translateWithFallback,
   validateApiKey,
   detectProvider,
   PROVIDER_LABEL,
@@ -12,7 +12,17 @@ import { ReviewSession } from './ReviewSession';
 import { exportToAnki } from './exportAnki';
 import './App.css';
 
+// The primary key keeps the original storage name, so a key saved before
+// backups existed carries over as the primary.
 const API_KEY_STORAGE = 'apiKey';
+const BACKUP_KEY_STORAGE = 'apiKeyBackup';
+
+function readKeys(): { primary: string | null; backup: string | null } {
+  const primary = localStorage.getItem(API_KEY_STORAGE);
+  const backup = localStorage.getItem(BACKUP_KEY_STORAGE);
+  // With only a backup saved, it does the primary's job.
+  return primary ? { primary, backup } : { primary: backup, backup: null };
+}
 
 function makeCard(
   option: TranslationOption,
@@ -183,14 +193,29 @@ function PhrasesView({ cards, onDelete }: { cards: Card[]; onDelete: (prompt: st
   );
 }
 
-function SettingsView({
-  hasKey,
+function KeyField({
+  id,
+  label,
+  optional,
+  hint,
+  placeholder,
+  storageKey,
+  otherStorageKey,
+  otherLabel,
   onKeyChange,
 }: {
-  hasKey: boolean;
+  id: string;
+  label: string;
+  optional?: boolean;
+  hint?: string;
+  placeholder: string;
+  storageKey: string;
+  otherStorageKey: string;
+  otherLabel: string;
   onKeyChange: () => void;
 }) {
-  const [input, setInput] = useState(() => localStorage.getItem(API_KEY_STORAGE) ?? '');
+  const [input, setInput] = useState(() => localStorage.getItem(storageKey) ?? '');
+  const [isSaved, setIsSaved] = useState(() => !!localStorage.getItem(storageKey));
   const [status, setStatus] = useState<'idle' | 'checking' | 'ok' | 'error'>('idle');
   const [message, setMessage] = useState('');
 
@@ -199,12 +224,18 @@ function SettingsView({
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    if (trimmed === localStorage.getItem(otherStorageKey)) {
+      setStatus('error');
+      setMessage(`This is already saved as your ${otherLabel.toLowerCase()}.`);
+      return;
+    }
+
     setStatus('checking');
     setMessage('');
-
     try {
       await validateApiKey(trimmed);
-      localStorage.setItem(API_KEY_STORAGE, trimmed);
+      localStorage.setItem(storageKey, trimmed);
+      setIsSaved(true);
       onKeyChange();
       setStatus('ok');
       setMessage(`${PROVIDER_LABEL[detectProvider(trimmed)]} key verified and saved.`);
@@ -215,95 +246,121 @@ function SettingsView({
   }
 
   function handleRemove() {
-    localStorage.removeItem(API_KEY_STORAGE);
+    localStorage.removeItem(storageKey);
     setInput('');
+    setIsSaved(false);
     setStatus('idle');
     setMessage('');
     onKeyChange();
   }
 
   return (
+    <form className="settings-form settings-key-field" onSubmit={handleSave}>
+      <label htmlFor={id} className="input-label">
+        {label}
+        {optional && <span className="optional-tag">optional</span>}
+        {provider && <span className="provider-badge">{PROVIDER_LABEL[provider]}</span>}
+      </label>
+      {hint && <p className="settings-hint">{hint}</p>}
+
+      <input
+        id={id}
+        type="password"
+        className="settings-input"
+        value={input}
+        onChange={(e) => {
+          setInput(e.target.value);
+          setStatus('idle');
+          setMessage('');
+        }}
+        placeholder={placeholder}
+        autoComplete="off"
+        spellCheck={false}
+      />
+
+      <div className="settings-actions">
+        <button
+          className="translate-btn settings-save-btn"
+          type="submit"
+          disabled={!trimmed || status === 'checking'}
+        >
+          {status === 'checking' ? 'Checking…' : 'Verify & save'}
+        </button>
+        {isSaved && (
+          <button type="button" className="settings-remove-btn" onClick={handleRemove}>
+            Remove key
+          </button>
+        )}
+      </div>
+
+      {message && (
+        <p className={`settings-status settings-status--${status}`} role="status">
+          {message}
+        </p>
+      )}
+    </form>
+  );
+}
+
+function SettingsView({ onKeyChange }: { onKeyChange: () => void }) {
+  return (
     <div className="settings-view">
       <h2 className="settings-heading">Settings</h2>
 
-      <form className="settings-form" onSubmit={handleSave}>
-        <label htmlFor="api-key" className="input-label">
-          API Key
-          {provider && (
-            <span className="provider-badge">{PROVIDER_LABEL[provider]}</span>
-          )}
-        </label>
+      <p className="settings-hint">
+        Translations run on your own API key, so you'll need one of these. Keys
+        are stored only in this browser and go straight to the provider — they
+        are never sent anywhere else.
+      </p>
 
-        <p className="settings-hint">
-          Translations run on your own API key, so you'll need one of these. The
-          key is stored only in this browser and goes straight to the provider —
-          it is never sent anywhere else.
-        </p>
+      <ul className="key-sources">
+        <li>
+          <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">
+            DeepSeek Platform
+          </a>
+          <span className="key-sources__note">
+            Starts with <code>sk-</code>. Prepaid and very cheap — a few dollars
+            lasts a long time for this app.
+          </span>
+        </li>
+        <li>
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer">
+            Google AI Studio
+          </a>
+          <span className="key-sources__note">
+            Free tier, no credit card, but often overloaded. A good backup.
+          </span>
+        </li>
+        <li>
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
+            Anthropic Console
+          </a>
+          <span className="key-sources__note">
+            Starts with <code>sk-ant-</code>. Pay-as-you-go, needs credit up front.
+          </span>
+        </li>
+      </ul>
 
-        <ul className="key-sources">
-          <li>
-            <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">
-              DeepSeek Platform
-            </a>
-            <span className="key-sources__note">
-              Starts with <code>sk-</code>. Prepaid and very cheap — a few dollars
-              lasts a long time for this app.
-            </span>
-          </li>
-          <li>
-            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer">
-              Google AI Studio
-            </a>
-            <span className="key-sources__note">
-              Free tier, no credit card, but often overloaded.
-            </span>
-          </li>
-          <li>
-            <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
-              Anthropic Console
-            </a>
-            <span className="key-sources__note">
-              Starts with <code>sk-ant-</code>. Pay-as-you-go, needs credit up front.
-            </span>
-          </li>
-        </ul>
-
-        <input
-          id="api-key"
-          type="password"
-          className="settings-input"
-          value={input}
-          onChange={(e) => {
-            setInput(e.target.value);
-            setStatus('idle');
-            setMessage('');
-          }}
-          placeholder="Paste a DeepSeek, Gemini, or Anthropic key"
-          autoComplete="off"
-          spellCheck={false}
-        />
-
-        <div className="settings-actions">
-          <button
-            className="translate-btn settings-save-btn"
-            type="submit"
-            disabled={!trimmed || status === 'checking'}
-          >
-            {status === 'checking' ? 'Checking…' : 'Verify & save'}
-          </button>
-          {hasKey && (
-            <button type="button" className="settings-remove-btn" onClick={handleRemove}>
-              Remove key
-            </button>
-          )}
-        </div>
-
-        {message && (
-          <p className={`settings-status settings-status--${status}`} role="status">
-            {message}
-          </p>
-        )}
-      </form>
+      <KeyField
+        id="api-key"
+        label="Primary key"
+        placeholder="Paste a DeepSeek, Gemini, or Anthropic key"
+        storageKey={API_KEY_STORAGE}
+        otherStorageKey={BACKUP_KEY_STORAGE}
+        otherLabel="Backup key"
+        onKeyChange={onKeyChange}
+      />
+      <KeyField
+        id="api-key-backup"
+        label="Backup key"
+        optional
+        hint="Used automatically when the primary provider is down, rate-limited, or out of credit."
+        placeholder="e.g. a free Gemini key"
+        storageKey={BACKUP_KEY_STORAGE}
+        otherStorageKey={API_KEY_STORAGE}
+        otherLabel="Primary key"
+        onKeyChange={onKeyChange}
+      />
     </div>
   );
 }
@@ -316,7 +373,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cards, setCards] = useState<Card[]>(() => loadCards());
-  const [hasKey, setHasKey] = useState(() => !!localStorage.getItem(API_KEY_STORAGE));
+  const [hasKey, setHasKey] = useState(() => !!readKeys().primary);
+  // Set when the backup key answered because the primary provider failed.
+  const [fallback, setFallback] = useState<{ from: string; to: string; reason: string } | null>(null);
   // What the options on screen were actually generated from. Kept separate
   // from the inputs, which are cleared for the next phrase while the results
   // are still on screen and savable.
@@ -325,8 +384,8 @@ export default function App() {
   async function handleTranslate() {
     if (!phrase.trim()) return;
 
-    const apiKey = localStorage.getItem(API_KEY_STORAGE);
-    if (!apiKey) {
+    const { primary, backup } = readKeys();
+    if (!primary) {
       setView('settings');
       return;
     }
@@ -334,10 +393,20 @@ export default function App() {
     setLoading(true);
     setError(null);
     setOptions([]);
+    setFallback(null);
 
     try {
-      const result = await translate(phrase, context, apiKey);
-      setOptions(result.options);
+      const outcome = await translateWithFallback(phrase, context, primary, backup);
+      setOptions(outcome.response.options);
+      setFallback(
+        outcome.fallback
+          ? {
+              from: PROVIDER_LABEL[outcome.fallback.from],
+              to: PROVIDER_LABEL[outcome.provider],
+              reason: outcome.fallback.reason,
+            }
+          : null,
+      );
       setSubmitted({ phrase: phrase.trim(), context: context.trim() });
       // Only the phrase is cleared: a run of phrases usually shares one
       // context, so it stays until explicitly cleared.
@@ -521,6 +590,12 @@ export default function App() {
                     </span>
                   )}
                 </p>
+                {fallback && (
+                  <p className="fallback-note" role="status">
+                    Answered by {fallback.to} (backup) — {fallback.from} was{' '}
+                    {fallback.reason}.
+                  </p>
+                )}
                 <div className="options-grid">
                   {options.map((opt, i) => (
                     <OptionCard key={i} option={opt} onSave={handleSave} />
@@ -544,10 +619,7 @@ export default function App() {
         )}
 
         {view === 'settings' && (
-          <SettingsView
-            hasKey={hasKey}
-            onKeyChange={() => setHasKey(!!localStorage.getItem(API_KEY_STORAGE))}
-          />
+          <SettingsView onKeyChange={() => setHasKey(!!readKeys().primary)} />
         )}
       </main>
     </div>
