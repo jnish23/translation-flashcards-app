@@ -242,11 +242,20 @@ function SettingsView({
 
         <ul className="key-sources">
           <li>
+            <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">
+              DeepSeek Platform
+            </a>
+            <span className="key-sources__note">
+              Starts with <code>sk-</code>. Prepaid and very cheap — a few dollars
+              lasts a long time for this app.
+            </span>
+          </li>
+          <li>
             <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer">
               Google AI Studio
             </a>
             <span className="key-sources__note">
-              Free tier, no credit card. Easiest place to start.
+              Free tier, no credit card, but often overloaded.
             </span>
           </li>
           <li>
@@ -269,7 +278,7 @@ function SettingsView({
             setStatus('idle');
             setMessage('');
           }}
-          placeholder="Paste a Gemini or Anthropic key"
+          placeholder="Paste a DeepSeek, Gemini, or Anthropic key"
           autoComplete="off"
           spellCheck={false}
         />
@@ -429,8 +438,8 @@ export default function App() {
               <div className="setup-callout">
                 <strong className="setup-callout__title">One-time setup</strong>
                 <p className="setup-callout__body">
-                  Translations run on your own API key. A Google Gemini key is
-                  free and takes about a minute to create.
+                  Translations run on your own API key — DeepSeek, Google
+                  Gemini, or Anthropic. It takes about a minute to create one.
                 </p>
                 <button
                   className="setup-callout__btn"

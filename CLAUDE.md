@@ -6,7 +6,10 @@ returns a few options with nuance notes, and I can save options as SRS flashcard
 
 ## Stack (do not change mid-project)
 - React with localStorage for persistence (single-user, personal use)
-- Anthropic API for translation, model: claude-sonnet-4-6
+- Translation provider is picked from the user's API key prefix:
+  - DeepSeek (`sk-`), model: deepseek-flash — primary; prepaid credits
+  - Anthropic (`sk-ant-`), model: claude-sonnet-4-6
+  - Google Gemini (anything else), model: gemini-3.1-flash-lite
 - No backend. API key entered by the user in a settings screen, stored in localStorage.
 
 ## Card schema (canonical — never deviate without updating this file)
