@@ -1020,3 +1020,28 @@
     color: #dc2626;
   }
 }
+
+/* Primary / backup key fields */
+
+.settings-key-field {
+  margin-top: 20px;
+}
+
+.settings-key-field + .settings-key-field {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* Shown on results when the backup key answered */
+
+.fallback-note {
+  margin: -6px 0 16px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+}
