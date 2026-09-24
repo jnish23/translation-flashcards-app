@@ -23,18 +23,58 @@ Vary the 3 options meaningfully in register or nuance — do not return near-dup
 
 const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
 const GOOGLE_MODEL = 'gemini-3.1-flash-lite';
+const DEEPSEEK_MODEL = 'deepseek-flash';
+const DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
 
-export type Provider = 'anthropic' | 'google';
+export type Provider = 'anthropic' | 'deepseek' | 'google';
 
 export function detectProvider(apiKey: string): Provider {
+  // Order matters: Anthropic keys also start with "sk-".
   if (apiKey.startsWith('sk-ant-')) return 'anthropic';
+  if (apiKey.startsWith('sk-')) return 'deepseek';
   return 'google';
 }
 
 export const PROVIDER_LABEL: Record<Provider, string> = {
   anthropic: 'Anthropic',
+  deepseek: 'DeepSeek',
   google: 'Google Gemini',
 };
+
+/**
+ * DeepSeek has no browser SDK worth pulling in; its API is OpenAI-shaped and
+ * sends CORS headers, so plain fetch works from the page. Errors carry the
+ * HTTP status so callers can tell a bad key from an empty balance.
+ */
+async function deepseekFetch(
+  apiKey: string,
+  path: string,
+  init?: RequestInit,
+): Promise<unknown> {
+  const res = await fetch(`${DEEPSEEK_BASE_URL}/${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    let detail = '';
+    try {
+      detail = ((await res.json()) as { error?: { message?: string } }).error?.message ?? '';
+    } catch {
+      // Non-JSON error body; the status code is enough.
+    }
+    const message =
+      res.status === 402
+        ? 'Your DeepSeek balance has run out. Top up at platform.deepseek.com.'
+        : `DeepSeek request failed (${res.status})${detail ? `: ${detail}` : ''}`;
+    throw Object.assign(new Error(message), { status: res.status });
+  }
+
+  return res.json();
+}
 
 function describeKeyError(err: unknown): string {
   const status = (err as { status?: number } | null)?.status;
@@ -50,14 +90,17 @@ function describeKeyError(err: unknown): string {
 }
 
 /**
- * Proves a key works before we store it. Both calls are metadata-only, so
+ * Proves a key works before we store it. Every call is metadata-only, so
  * validating a key costs nothing in tokens.
  */
 export async function validateApiKey(apiKey: string): Promise<void> {
   try {
-    if (detectProvider(apiKey) === 'anthropic') {
+    const provider = detectProvider(apiKey);
+    if (provider === 'anthropic') {
       const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
       await client.models.list({ limit: 1 });
+    } else if (provider === 'deepseek') {
+      await deepseekFetch(apiKey, 'models');
     } else {
       const genAI = new GoogleGenerativeAI(apiKey);
       await genAI.getGenerativeModel({ model: GOOGLE_MODEL }).countTokens('ok');
@@ -102,6 +145,12 @@ function parseAndValidate(raw: string): TranslationResponse {
   return parsed as TranslationResponse;
 }
 
+function buildUserContent(phrase: string, context: string): string {
+  return context.trim()
+    ? `Phrase: ${phrase}\nContext: ${context}`
+    : `Phrase: ${phrase}`;
+}
+
 async function translateWithAnthropic(
   phrase: string,
   context: string,
@@ -109,9 +158,7 @@ async function translateWithAnthropic(
 ): Promise<TranslationResponse> {
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 
-  const userContent = context.trim()
-    ? `Phrase: ${phrase}\nContext: ${context}`
-    : `Phrase: ${phrase}`;
+  const userContent = buildUserContent(phrase, context);
 
   const message = await client.messages.create({
     model: ANTHROPIC_MODEL,
@@ -142,12 +189,39 @@ async function translateWithGoogle(
     },
   });
 
-  const userContent = context.trim()
-    ? `Phrase: ${phrase}\nContext: ${context}`
-    : `Phrase: ${phrase}`;
+  const userContent = buildUserContent(phrase, context);
 
   const result = await model.generateContent(userContent);
   const raw = result.response.text();
+
+  return parseAndValidate(raw);
+}
+
+async function translateWithDeepSeek(
+  phrase: string,
+  context: string,
+  apiKey: string,
+): Promise<TranslationResponse> {
+  // JSON mode requires the prompt to mention JSON and show the shape, which
+  // SYSTEM_PROMPT already does.
+  const data = (await deepseekFetch(apiKey, 'chat/completions', {
+    method: 'POST',
+    body: JSON.stringify({
+      model: DEEPSEEK_MODEL,
+      max_tokens: 1024,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: buildUserContent(phrase, context) },
+      ],
+    }),
+  })) as { choices?: { message?: { content?: string | null } }[] };
+
+  const raw = data.choices?.[0]?.message?.content ?? '';
+  // DeepSeek documents that JSON mode occasionally returns empty content.
+  if (!raw.trim()) {
+    throw new Error('DeepSeek returned an empty response. This happens occasionally — try again.');
+  }
 
   return parseAndValidate(raw);
 }
@@ -157,9 +231,12 @@ export async function translate(
   context: string,
   apiKey: string,
 ): Promise<TranslationResponse> {
-  const provider = detectProvider(apiKey);
-  if (provider === 'google') {
-    return translateWithGoogle(phrase, context, apiKey);
+  switch (detectProvider(apiKey)) {
+    case 'anthropic':
+      return translateWithAnthropic(phrase, context, apiKey);
+    case 'deepseek':
+      return translateWithDeepSeek(phrase, context, apiKey);
+    case 'google':
+      return translateWithGoogle(phrase, context, apiKey);
   }
-  return translateWithAnthropic(phrase, context, apiKey);
 }
