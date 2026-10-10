@@ -17,6 +17,10 @@ import './App.css';
 const API_KEY_STORAGE = 'apiKey';
 const BACKUP_KEY_STORAGE = 'apiKeyBackup';
 
+// Used whenever the context box is left empty. Applied when translating rather
+// than pre-filled, so clearing the box still falls back to it.
+const DEFAULT_CONTEXT = 'parental casual';
+
 function readKeys(): { primary: string | null; backup: string | null } {
   const primary = localStorage.getItem(API_KEY_STORAGE);
   const backup = localStorage.getItem(BACKUP_KEY_STORAGE);
@@ -395,8 +399,10 @@ export default function App() {
     setOptions([]);
     setFallback(null);
 
+    const effectiveContext = context.trim() || DEFAULT_CONTEXT;
+
     try {
-      const outcome = await translateWithFallback(phrase, context, primary, backup);
+      const outcome = await translateWithFallback(phrase, effectiveContext, primary, backup);
       setOptions(outcome.response.options);
       setFallback(
         outcome.fallback
@@ -407,7 +413,7 @@ export default function App() {
             }
           : null,
       );
-      setSubmitted({ phrase: phrase.trim(), context: context.trim() });
+      setSubmitted({ phrase: phrase.trim(), context: effectiveContext });
       // Only the phrase is cleared: a run of phrases usually shares one
       // context, so it stays until explicitly cleared.
       setPhrase('');
@@ -551,7 +557,7 @@ export default function App() {
               <textarea
                 id="context"
                 className="input-textarea input-textarea--context"
-                placeholder="e.g. email to my boss · casual chat with a friend · formal written document"
+                placeholder={`Empty = “${DEFAULT_CONTEXT}”. Or e.g. email to my boss`}
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
                 onKeyDown={handleKeyDown}
