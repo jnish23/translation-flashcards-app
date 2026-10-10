@@ -1045,3 +1045,55 @@
   border: 1px solid rgba(245, 158, 11, 0.3);
   border-radius: 8px;
 }
+
+/* Phrase search */
+
+.phrase-search {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.phrase-search__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 40px 10px 14px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+  appearance: none;
+  transition: border-color 0.15s;
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-bg);
+  }
+
+  /* We draw our own clear button */
+  &::-webkit-search-cancel-button {
+    display: none;
+  }
+}
+
+.phrase-search__clear {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  font-size: 0.75rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--code-bg);
+    color: var(--text-h);
+  }
+}
