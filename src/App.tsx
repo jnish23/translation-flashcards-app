@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   translateWithFallback,
   validateApiKey,
@@ -147,7 +147,23 @@ function DeckView({
   );
 }
 
+// Lowercased and NFKC-normalised so full-width and half-width forms, and
+// letter case, don't stop a search from matching.
+function normalizeForSearch(text: string): string {
+  return text.normalize('NFKC').toLowerCase();
+}
+
+function phraseMatches(card: Card, tokens: string[]): boolean {
+  const haystack = normalizeForSearch(
+    [card.prompt, card.kanji, card.reading, card.romaji, card.context].join('\n'),
+  );
+  // Every word must appear somewhere, in any order.
+  return tokens.every((t) => haystack.includes(t));
+}
+
 function PhrasesView({ cards, onDelete }: { cards: Card[]; onDelete: (prompt: string, kanji: string) => void }) {
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
   const seen = new Map<string, Card>();
   for (const card of cards) {
     const key = `${card.prompt}|||${card.kanji}`;
@@ -170,13 +186,57 @@ function PhrasesView({ cards, onDelete }: { cards: Card[]; onDelete: (prompt: st
     );
   }
 
+  const tokens = normalizeForSearch(query).split(/\s+/).filter(Boolean);
+  const visible = tokens.length ? phrases.filter((card) => phraseMatches(card, tokens)) : phrases;
+
   return (
     <div className="phrases-view">
+      <div className="phrase-search">
+        <input
+          ref={searchRef}
+          type="search"
+          className="phrase-search__input"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setQuery('');
+          }}
+          placeholder="Search English, Japanese, romaji, or context"
+          aria-label="Search phrases"
+          enterKeyHint="search"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {query && (
+          <button
+            type="button"
+            className="phrase-search__clear"
+            onClick={() => {
+              setQuery('');
+              // The next thing after clearing is typing a new search.
+              searchRef.current?.focus();
+            }}
+            aria-label="Clear search"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
       <p className="deck-count">
-        {phrases.length} phrase{phrases.length !== 1 ? 's' : ''}
+        {tokens.length
+          ? `${visible.length} of ${phrases.length} phrase${phrases.length !== 1 ? 's' : ''}`
+          : `${phrases.length} phrase${phrases.length !== 1 ? 's' : ''}`}
       </p>
+
+      {visible.length === 0 && (
+        <div className="deck-empty">
+          <p>No phrases match “{query.trim()}”.</p>
+        </div>
+      )}
+
       <ul className="phrase-list">
-        {phrases.map((card) => (
+        {visible.map((card) => (
           <li key={`${card.prompt}|||${card.kanji}`} className="phrase-row">
             <span className="phrase-row__english">{card.prompt}</span>
             <div className="phrase-row__japanese">
