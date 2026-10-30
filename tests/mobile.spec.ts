@@ -1,0 +1,52 @@
+import { test, expect } from '@playwright/test';
+test('mobile navigation, import, persistence, review, export, and themes', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Find your words' })).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.locator('input[type=file]').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ version: 1, cards: [{ id: 'test', card_type: 'production', prompt: 'Good morning', context: '', kanji: 'おはよう', reading: 'おはよう', romaji: 'ohayou', register: 'casual', nuance: 'Friends', repetitions: 0, ease_factor: 2.5, interval: 0, due_date: '2020-01-01', created_at: '2020-01-01' }] })) });
+  await expect(page.getByRole('status').last()).toContainText('1 imported');
+  await page.getByRole('button', { name: /Review/ }).click();
+  await page.getByRole('button', { name: 'Show answer' }).click();
+  await page.getByRole('button', { name: 'Good', exact: true }).click();
+  await expect(page.getByText('All caught up!')).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: /Deck/ }).click();
+  await expect(page.getByText('Good morning')).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export to Anki' }).click();
+  expect((await download).suggestedFilename()).toBe('japanese-srs-export.txt');
+  await page.getByRole('button', { name: 'Translate', exact: true }).click();
+  for (const colorScheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.mouse.move(0, 0);
+    await page.screenshot({ path: `screenshots/translate-${colorScheme}.png`, fullPage: true });
+  }
+});
+test('translation, both card types, phrases, and deletion', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.addInitScript(() => localStorage.setItem('apiKey', 'sk-test-personal'));
+  await page.route('https://api.deepseek.com/chat/completions', route => route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ options: Array.from({ length: 3 }, (_, i) => ({ kanji: `おはよう${i}`, reading: 'おはよう', romaji: 'ohayou', register: 'casual', nuance: 'For a friend.' })) }) } }] } }));
+  await page.goto('/');
+  await page.getByLabel('What do you want to say?').fill('Good morning');
+  await page.getByRole('radio', { name: 'Translate', exact: true }).check();
+  await page.locator('.translate-btn').click();
+  await expect(page.locator('.option-card')).toHaveCount(3);
+  await page.locator('.recognition-check input').first().check();
+  await page.getByRole('button', { name: 'Save', exact: true }).first().click();
+  await expect(page.getByText('Saved 2 cards!')).toBeVisible();
+  await page.getByRole('button', { name: 'Phrases', exact: true }).click();
+  await expect(page.locator('.phrase-row')).toHaveCount(1);
+  await page.getByRole('button', { name: /Deck/ }).click();
+  await expect(page.locator('.card-row')).toHaveCount(2);
+  await page.screenshot({ path: 'screenshots/deck.png', fullPage: true });
+  await page.getByRole('button', { name: /Review/ }).click();
+  await page.getByRole('button', { name: 'Show answer' }).click();
+  await page.getByRole('button', { name: 'show furigana' }).click();
+  await expect(page.locator('ruby')).toBeVisible();
+  await page.screenshot({ path: 'screenshots/review.png', fullPage: true });
+  await page.getByRole('button', { name: 'Phrases', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete phrase Good morning' }).click();
+  await expect(page.getByText('No phrases saved yet.')).toBeVisible();
+});

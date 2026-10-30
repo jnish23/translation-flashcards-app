@@ -25,3 +25,10 @@ dist-ssr
 
 # vite-plugin-pwa dev output
 dev-dist
+
+# Local signing secrets and test artifacts
+*.jks
+*.keystore
+keystore.properties
+test-results/
+playwright-report/

@@ -87,3 +87,7 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+:root { --bg:#fffefa; --code-bg:#eeede7; --text:#626577; --text-h:#24283b; --border:#dedfdc; --accent:#485b92; --accent-bg:#e9edf6; --accent-border:#a5b0cd; --shadow:0 4px 24px #20294306; background:#f7f6f2; font-size:16px; letter-spacing:0; --sans:system-ui, 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', sans-serif; }
+* { box-sizing:border-box; }
+body { min-width:280px; }
+@media (prefers-color-scheme:dark) { :root { --bg:#222634; --code-bg:#191c27; --text:#b1b6c9; --text-h:#f3f1e9; --border:#393f51; --accent:#a9bced; --accent-bg:#303b57; --accent-border:#6378ab; --shadow:none; background:#191c27; } .brand-mark,.translate-btn { color:var(--code-bg); } }

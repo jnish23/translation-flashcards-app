@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Japanese Flashcards</string>
+    <string name="title_activity_main">Japanese Flashcards</string>
+    <string name="package_name">com.jordannishimura.japaneseflashcards</string>
+    <string name="custom_url_scheme">com.jordannishimura.japaneseflashcards</string>
+</resources>
