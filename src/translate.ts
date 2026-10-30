@@ -1,25 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import type { TranslationResponse } from './types';
-
-const SYSTEM_PROMPT = `You are a Japanese language tutor. The user will give you an English phrase they want to express in Japanese, plus optional context (e.g. register, audience, formality).
-
-Return exactly 3 translation options as a JSON object — no markdown, no commentary, just the raw JSON.
-
-Schema:
-{
-  "options": [
-    {
-      "kanji": "<Japanese text with kanji where natural>",
-      "reading": "<full hiragana reading>",
-      "romaji": "<Hepburn romaji, lowercase>",
-      "register": "<one of: formal | casual | written | honorific | humble | polite>",
-      "nuance": "<1-2 sentences explaining when to use this vs. the others>"
-    }
-  ]
-}
-
-Vary the 3 options meaningfully in register or nuance — do not return near-duplicates.`;
+import type { TranslationResponse, LearningRequest, LearningResult } from './types';
+import { buildLearningPrompt, parseLearningResponse } from './learning.ts';
 
 const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
 const GOOGLE_MODEL = 'gemini-3.1-flash-lite';
@@ -113,58 +95,19 @@ export async function validateApiKey(apiKey: string): Promise<void> {
   }
 }
 
-function stripFences(raw: string): string {
-  return raw
-    .replace(/^```(?:json)?\n?/m, '')
-    .replace(/\n?```$/m, '')
-    .trim();
-}
-
-function parseAndValidate(raw: string): TranslationResponse {
-  const cleaned = stripFences(raw);
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    throw new Error(
-      `JSON parse failed.\n\nRaw response:\n${raw}\n\nCleaned:\n${cleaned}`,
-    );
-  }
-
-  if (
-    typeof parsed !== 'object' ||
-    parsed === null ||
-    !Array.isArray((parsed as { options?: unknown }).options)
-  ) {
-    throw new Error(
-      `Unexpected response shape — missing "options" array.\n\nParsed:\n${JSON.stringify(parsed, null, 2)}`,
-    );
-  }
-
-  return parsed as TranslationResponse;
-}
-
-function buildUserContent(phrase: string, context: string): string {
-  return context.trim()
-    ? `Phrase: ${phrase}\nContext: ${context}`
-    : `Phrase: ${phrase}`;
-}
-
 async function translateWithAnthropic(
-  phrase: string,
-  context: string,
+  request: LearningRequest,
   apiKey: string,
-): Promise<TranslationResponse> {
+): Promise<LearningResult> {
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 
-  const userContent = buildUserContent(phrase, context);
+  const { system, user, maxTokens } = buildLearningPrompt(request);
 
   const message = await client.messages.create({
     model: ANTHROPIC_MODEL,
-    max_tokens: 1024,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userContent }],
+    max_tokens: maxTokens,
+    system,
+    messages: [{ role: 'user', content: user }],
   });
 
   const raw = message.content
@@ -172,43 +115,40 @@ async function translateWithAnthropic(
     .map((b) => (b as { type: 'text'; text: string }).text)
     .join('');
 
-  return parseAndValidate(raw);
+  return parseLearningResponse(raw, request.task);
 }
 
 async function translateWithGoogle(
-  phrase: string,
-  context: string,
+  request: LearningRequest,
   apiKey: string,
-): Promise<TranslationResponse> {
+): Promise<LearningResult> {
+  const { system, user, maxTokens } = buildLearningPrompt(request);
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
     model: GOOGLE_MODEL,
-    systemInstruction: SYSTEM_PROMPT,
+    systemInstruction: system,
     generationConfig: {
       responseMimeType: 'application/json',
+      maxOutputTokens: maxTokens,
     },
   });
 
-  const userContent = buildUserContent(phrase, context);
-
-  const result = await model.generateContent(userContent);
+  const result = await model.generateContent(user);
   const raw = result.response.text();
 
-  return parseAndValidate(raw);
+  return parseLearningResponse(raw, request.task);
 }
 
 async function translateWithDeepSeek(
-  phrase: string,
-  context: string,
+  request: LearningRequest,
   apiKey: string,
-): Promise<TranslationResponse> {
-  // JSON mode requires the prompt to mention JSON and show the shape, which
-  // SYSTEM_PROMPT already does.
+): Promise<LearningResult> {
+  const { system, user, maxTokens } = buildLearningPrompt(request);
   const data = (await deepseekFetch(apiKey, 'chat/completions', {
     method: 'POST',
     body: JSON.stringify({
       model: DEEPSEEK_MODEL,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
       // Thinking is on by default. Its reasoning is written to a separate
       // reasoning_content field and can use up max_tokens before any answer
       // is produced, leaving `content` empty. A short translation does not
@@ -216,8 +156,8 @@ async function translateWithDeepSeek(
       thinking: { type: 'disabled' },
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: buildUserContent(phrase, context) },
+        { role: 'system', content: system },
+        { role: 'user', content: user },
       ],
     }),
   })) as {
@@ -243,7 +183,7 @@ async function translateWithDeepSeek(
     );
   }
 
-  return parseAndValidate(raw);
+  return parseLearningResponse(raw, request.task);
 }
 
 /**
@@ -266,26 +206,22 @@ function providerSideReason(err: unknown): string | null {
   return null;
 }
 
-export type TranslateOutcome = {
-  response: TranslationResponse;
+export type LearningOutcome = {
+  result: LearningResult;
   provider: Provider;
   /** Set when the primary failed and the backup answered instead. */
   fallback?: { from: Provider; reason: string };
 };
 
-/**
- * Translates with the primary key, retrying once on the backup key if the
- * primary provider is down, rate-limited, out of credit, or unreachable.
- */
-export async function translateWithFallback(
-  phrase: string,
-  context: string,
+/** Both tasks use the same provider fallback policy; malformed answers surface. */
+export async function requestLearningWithFallback(
+  request: LearningRequest,
   primaryKey: string,
   backupKey?: string | null,
-): Promise<TranslateOutcome> {
+): Promise<LearningOutcome> {
   const primary = detectProvider(primaryKey);
   try {
-    return { response: await translate(phrase, context, primaryKey), provider: primary };
+    return { result: await requestLearning(request, primaryKey), provider: primary };
   } catch (err) {
     const reason = providerSideReason(err);
     if (!backupKey || !reason) throw err;
@@ -293,7 +229,7 @@ export async function translateWithFallback(
     const backup = detectProvider(backupKey);
     try {
       return {
-        response: await translate(phrase, context, backupKey),
+        result: await requestLearning(request, backupKey),
         provider: backup,
         fallback: { from: primary, reason },
       };
@@ -307,17 +243,39 @@ export async function translateWithFallback(
   }
 }
 
-export async function translate(
-  phrase: string,
-  context: string,
-  apiKey: string,
-): Promise<TranslationResponse> {
+export async function requestLearning(request: LearningRequest, apiKey: string): Promise<LearningResult> {
   switch (detectProvider(apiKey)) {
     case 'anthropic':
-      return translateWithAnthropic(phrase, context, apiKey);
+      return translateWithAnthropic(request, apiKey);
     case 'deepseek':
-      return translateWithDeepSeek(phrase, context, apiKey);
+      return translateWithDeepSeek(request, apiKey);
     case 'google':
-      return translateWithGoogle(phrase, context, apiKey);
+      return translateWithGoogle(request, apiKey);
   }
+}
+
+// Preserve the existing translation API for callers that only need translation.
+export type TranslateOutcome = {
+  response: TranslationResponse;
+  provider: Provider;
+  fallback?: { from: Provider; reason: string };
+};
+
+export async function translateWithFallback(
+  phrase: string,
+  context: string,
+  primaryKey: string,
+  backupKey?: string | null,
+): Promise<TranslateOutcome> {
+  const { result, provider, fallback } = await requestLearningWithFallback(
+    { task: 'translate', phrase, context }, primaryKey, backupKey,
+  );
+  if (result.task !== 'translate') throw new Error('Unexpected task in translation response.');
+  return { response: result.response, provider, fallback };
+}
+
+export async function translate(phrase: string, context: string, apiKey: string): Promise<TranslationResponse> {
+  const result = await requestLearning({ task: 'translate', phrase, context }, apiKey);
+  if (result.task !== 'translate') throw new Error('Unexpected task in translation response.');
+  return result.response;
 }

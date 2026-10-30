@@ -1,11 +1,14 @@
 import { useRef, useState } from 'react';
 import {
-  translateWithFallback,
+  requestLearningWithFallback,
   validateApiKey,
   detectProvider,
   PROVIDER_LABEL,
 } from './translate';
-import type { TranslationOption, Card } from './types';
+import type { TranslationOption, Card, InputMode, LearningRequest, LearningResult } from './types';
+import { resolveTask } from './learning';
+import { makeCard } from './cards';
+import { OptionCard, JapaneseFeedback } from './LearningResults';
 import { loadCards, persistCard, removeCard, updateCard } from './storage';
 import { getDueCards } from './sm2';
 import { ReviewSession } from './ReviewSession';
@@ -28,73 +31,6 @@ function readKeys(): { primary: string | null; backup: string | null } {
   return primary ? { primary, backup } : { primary: backup, backup: null };
 }
 
-function makeCard(
-  option: TranslationOption,
-  prompt: string,
-  context: string,
-  card_type: 'production' | 'recognition',
-): Card {
-  const now = new Date().toISOString();
-  return {
-    id: crypto.randomUUID(),
-    card_type,
-    prompt,
-    context,
-    kanji: option.kanji,
-    reading: option.reading,
-    romaji: option.romaji,
-    register: option.register,
-    nuance: option.nuance,
-    repetitions: 0,
-    ease_factor: 2.5,
-    interval: 0,
-    due_date: now,
-    created_at: now,
-  };
-}
-
-function OptionCard({
-  option,
-  onSave,
-}: {
-  option: TranslationOption;
-  onSave: (option: TranslationOption, addRecognition: boolean) => void;
-}) {
-  const [addRecognition, setAddRecognition] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
-
-  function handleSave() {
-    onSave(option, addRecognition);
-    setFlash(addRecognition ? 'Saved 2 cards!' : 'Saved!');
-    setTimeout(() => setFlash(null), 1800);
-  }
-
-  return (
-    <div className="option-card">
-      <div className="option-card__japanese">
-        <span className="option-card__kanji">{option.kanji}</span>
-        <span className="option-card__reading">{option.reading}</span>
-      </div>
-      <div className="option-card__romaji">{option.romaji}</div>
-      <span className="option-card__register">{option.register}</span>
-      <p className="option-card__nuance">{option.nuance}</p>
-      <div className="option-card__actions">
-        <label className="recognition-check">
-          <input
-            type="checkbox"
-            checked={addRecognition}
-            onChange={(e) => setAddRecognition(e.target.checked)}
-          />
-          also add recognition card
-        </label>
-        <button className="save-btn" onClick={handleSave} disabled={flash !== null}>
-          {flash ?? 'Save'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function DeckView({
   cards,
   onDelete,
@@ -106,7 +42,7 @@ function DeckView({
     return (
       <div className="deck-empty">
         <p>No cards saved yet.</p>
-        <p className="deck-empty__hint">Translate a phrase and hit Save to add your first card.</p>
+        <p className="deck-empty__hint">Translate a phrase or check your Japanese, then save a result.</p>
       </div>
     );
   }
@@ -181,7 +117,7 @@ function PhrasesView({ cards, onDelete }: { cards: Card[]; onDelete: (prompt: st
     return (
       <div className="deck-empty">
         <p>No phrases saved yet.</p>
-        <p className="deck-empty__hint">Translate a phrase and hit Save to add your first card.</p>
+        <p className="deck-empty__hint">Translate a phrase or check your Japanese, then save a result.</p>
       </div>
     );
   }
@@ -372,7 +308,7 @@ function SettingsView({ onKeyChange }: { onKeyChange: () => void }) {
       <h2 className="settings-heading">Settings</h2>
 
       <p className="settings-hint">
-        Translations run on your own API key, so you'll need one of these. Keys
+        Translations and Japanese checks run on your own API key, so you'll need one of these. Keys
         are stored only in this browser and go straight to the provider — they
         are never sent anywhere else.
       </p>
@@ -433,7 +369,12 @@ export default function App() {
   const [view, setView] = useState<'translate' | 'deck' | 'review' | 'phrases' | 'settings'>('translate');
   const [phrase, setPhrase] = useState('');
   const [context, setContext] = useState('');
-  const [options, setOptions] = useState<TranslationOption[]>([]);
+  const [mode, setMode] = useState<InputMode>('auto');
+  const [intendedMeaning, setIntendedMeaning] = useState('');
+  const [result, setResult] = useState<LearningResult | null>(null);
+  const requestInFlight = useRef(false);
+  const isComposing = useRef(false);
+  const task = resolveTask(mode, phrase);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cards, setCards] = useState<Card[]>(() => loadCards());
@@ -443,10 +384,10 @@ export default function App() {
   // What the options on screen were actually generated from. Kept separate
   // from the inputs, which are cleared for the next phrase while the results
   // are still on screen and savable.
-  const [submitted, setSubmitted] = useState<{ phrase: string; context: string } | null>(null);
+  const [submitted, setSubmitted] = useState<LearningRequest | null>(null);
 
-  async function handleTranslate() {
-    if (!phrase.trim()) return;
+  async function handleSubmit() {
+    if (requestInFlight.current || isComposing.current || !phrase.trim()) return;
 
     const { primary, backup } = readKeys();
     if (!primary) {
@@ -454,16 +395,23 @@ export default function App() {
       return;
     }
 
+    requestInFlight.current = true;
     setLoading(true);
     setError(null);
-    setOptions([]);
+    setResult(null);
+    setSubmitted(null);
     setFallback(null);
 
-    const effectiveContext = context.trim() || DEFAULT_CONTEXT;
+    const request: LearningRequest = {
+      task,
+      phrase: phrase.trim(),
+      context: context.trim() || DEFAULT_CONTEXT,
+      ...(task === 'check' ? { intendedMeaning: intendedMeaning.trim() } : {}),
+    };
 
     try {
-      const outcome = await translateWithFallback(phrase, effectiveContext, primary, backup);
-      setOptions(outcome.response.options);
+      const outcome = await requestLearningWithFallback(request, primary, backup);
+      setResult(outcome.result);
       setFallback(
         outcome.fallback
           ? {
@@ -473,31 +421,36 @@ export default function App() {
             }
           : null,
       );
-      setSubmitted({ phrase: phrase.trim(), context: effectiveContext });
-      // Only the phrase is cleared: a run of phrases usually shares one
-      // context, so it stays until explicitly cleared.
+      setSubmitted(request);
+      // Clear this attempt and its intent, but keep the shared context
+      // for the next phrase until explicitly cleared.
       setPhrase('');
+      setIntendedMeaning('');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      requestInFlight.current = false;
       setLoading(false);
     }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
+    if (isComposing.current || e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      handleTranslate();
+      e.preventDefault();
+      void handleSubmit();
     }
   }
 
   function handleSave(option: TranslationOption, addRecognition: boolean) {
-    if (!submitted) return;
+    if (!submitted || !result) return;
+    const prompt = result.task === 'check' ? result.response.recommendation.english : submitted.phrase;
     let updated = persistCard(
-      makeCard(option, submitted.phrase, submitted.context, 'production'),
+      makeCard(option, prompt, submitted.context, 'production'),
     );
     if (addRecognition) {
       updated = persistCard(
-        makeCard(option, submitted.phrase, submitted.context, 'recognition'),
+        makeCard(option, prompt, submitted.context, 'recognition'),
       );
     }
     setCards(updated);
@@ -531,7 +484,7 @@ export default function App() {
             className={`nav-tab${view === 'translate' ? ' nav-tab--active' : ''}`}
             onClick={() => setView('translate')}
           >
-            Translate
+            Learn
           </button>
           <button
             className={`nav-tab${view === 'deck' ? ' nav-tab--active' : ''}`}
@@ -573,7 +526,7 @@ export default function App() {
               <div className="setup-callout">
                 <strong className="setup-callout__title">One-time setup</strong>
                 <p className="setup-callout__body">
-                  Translations run on your own API key — DeepSeek, Google
+                  Translations and Japanese checks run on your own API key — DeepSeek, Google
                   Gemini, or Anthropic. It takes about a minute to create one.
                 </p>
                 <button
@@ -585,19 +538,58 @@ export default function App() {
               </div>
             )}
 
-            <section className="input-section">
+            <section className="input-section" aria-busy={loading}>
+              <fieldset className="input-mode" disabled={loading}>
+                <legend className="input-label">How can I help?</legend>
+                <div className="input-mode__choices">
+                  {([['auto', 'Auto'], ['translate', 'Translate'], ['check', 'Check Japanese']] as const).map(([value, label]) => (
+                    <label key={value} className={`mode-choice${mode === value ? ' mode-choice--active' : ''}`}>
+                      <input type="radio" name="input-mode" value={value} checked={mode === value} onChange={() => setMode(value)} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <p className="input-hint" role="status">
+                {mode === 'auto'
+                  ? `Auto: ${task === 'check' ? 'checking your Japanese' : 'translating into Japanese'}. Choose a mode for romaji or mixed input.`
+                  : task === 'check' ? 'Get feedback on your grammar, meaning, and naturalness.' : 'Get three natural Japanese options.'}
+              </p>
               <label htmlFor="phrase" className="input-label">
-                What do you want to say?
+                {task === 'check' ? 'Your Japanese attempt' : 'What do you want to say?'}
               </label>
               <textarea
                 id="phrase"
                 className="input-textarea"
-                placeholder="e.g. I'm sorry for the late reply"
+                placeholder={task === 'check' ? 'e.g. 返事が遅くなってごめんね' : "English or Japanese, e.g. I'm sorry for the late reply"}
                 value={phrase}
                 onChange={(e) => setPhrase(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onCompositionStart={() => { isComposing.current = true; }}
+                onCompositionEnd={() => { isComposing.current = false; }}
+                disabled={loading}
                 rows={3}
               />
+
+              {task === 'check' && (
+                <>
+                  <label htmlFor="intended-meaning" className="input-label input-label--optional">
+                    What I mean in English <span className="optional-tag">optional</span>
+                  </label>
+                  <textarea
+                    id="intended-meaning"
+                    className="input-textarea input-textarea--context"
+                    placeholder="Leave empty and I’ll explain what your Japanese conveys"
+                    value={intendedMeaning}
+                    onChange={(e) => setIntendedMeaning(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    onCompositionStart={() => { isComposing.current = true; }}
+                    onCompositionEnd={() => { isComposing.current = false; }}
+                    disabled={loading}
+                    rows={2}
+                  />
+                </>
+              )}
 
               <div className="input-label-row">
                 <label htmlFor="context" className="input-label">
@@ -609,6 +601,7 @@ export default function App() {
                     type="button"
                     className="clear-context-btn"
                     onClick={() => setContext('')}
+                    disabled={loading}
                   >
                     Clear
                   </button>
@@ -621,18 +614,21 @@ export default function App() {
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onCompositionStart={() => { isComposing.current = true; }}
+                onCompositionEnd={() => { isComposing.current = false; }}
+                disabled={loading}
                 rows={2}
               />
 
               <div className="translate-row">
                 <button
                   className="translate-btn"
-                  onClick={handleTranslate}
+                  onClick={handleSubmit}
                   disabled={loading || !phrase.trim()}
                 >
-                  {loading ? 'Translating…' : 'Translate'}
+                  {loading ? (task === 'check' ? 'Checking…' : 'Translating…') : task === 'check' ? 'Check Japanese' : 'Translate'}
                 </button>
-                <span className="keyboard-hint">⌘↵ to translate</span>
+                <span className="keyboard-hint">⌘ / Ctrl + Enter to submit</span>
               </div>
             </section>
 
@@ -643,13 +639,16 @@ export default function App() {
               </div>
             )}
 
-            {options.length > 0 && submitted && (
-              <section className="results-section">
-                <h2 className="results-heading">3 Options</h2>
+            {result && submitted && (
+              <section className="results-section" aria-label="Learning result">
+                <h2 className="results-heading">{result.task === 'check' ? 'Japanese feedback' : '3 Options'}</h2>
                 {/* The phrase box is cleared on submit, so echo back what
                     these options were generated from. */}
                 <p className="results-prompt">
                   {submitted.phrase}
+                  {submitted.intendedMeaning && (
+                    <span className="results-prompt__context">Intended meaning: {submitted.intendedMeaning}</span>
+                  )}
                   {submitted.context && (
                     <span className="results-prompt__context">
                       {submitted.context}
@@ -662,11 +661,15 @@ export default function App() {
                     {fallback.reason}.
                   </p>
                 )}
-                <div className="options-grid">
-                  {options.map((opt, i) => (
-                    <OptionCard key={i} option={opt} onSave={handleSave} />
-                  ))}
-                </div>
+                {result.task === 'check' ? (
+                  <JapaneseFeedback response={result.response} onSave={handleSave} />
+                ) : (
+                  <div className="options-grid">
+                    {result.response.options.map((opt, i) => (
+                      <OptionCard key={i} option={opt} onSave={handleSave} />
+                    ))}
+                  </div>
+                )}
               </section>
             )}
           </>

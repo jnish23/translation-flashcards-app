@@ -1,6 +1,6 @@
 # Japanese SRS Translator
 
-A personal tool I built to translate English into natural Japanese and create flashcards with an SRS to practice.
+A personal Japanese learning tool: translate English into natural Japanese, check your own Japanese attempts, and save useful phrases as SRS flashcards.
 
 It runs entirely in the browser, which you can access as an app on Android. There's no backend, no account, and nothing leaves your machine except the translation request to the LLM provider you choose.
 
@@ -12,9 +12,11 @@ I wanted a tool where the context is part of the question, and where the answer 
 
 ## What it does
 
+- **Japanese feedback.** Enter your own Japanese and get its interpreted English meaning, separate grammar and naturalness assessments, explanations of corrections, and a chunk-by-chunk breakdown of one recommended version. Already-natural wording is confirmed and preserved. Optionally provide what you meant in English to check whether your attempt conveys it.
+- **Automatic input routing.** The Learn tab defaults to Auto: kana or kanji selects Japanese checking; other input selects translation. Choose Translate or Check Japanese explicitly for romaji or mixed input.
 - **Context-aware translation.** Each query takes the phrase plus a context line (who, where, how formal). The default context is "parental casual", since that's my most common situation.
 - **Three options, not one.** Options differ in register and nuance on purpose, and each comes with an explanation.
-- **Save as flashcards.** Save an option as a production card (English → Japanese), and optionally add a recognition card (Japanese → English) for the same phrase.
+- **Save as flashcards.** Japanese checks save the recommendation’s English meaning on the front and natural Japanese plus a short usage note on the back. Detailed teaching stays in the current result until the next request; it is not stored. Save a translation option as a production card (English → Japanese), and optionally add a recognition card (Japanese → English) for the same phrase.
 - **Spaced-repetition review.** Cards are scheduled with SM-2. Furigana renders over kanji and can be toggled off to test yourself.
 - **Searchable phrase library.** Search across English, kanji, reading, romaji, and context. Matching is Unicode-normalized, so full-width and half-width input both work.
 - **Anki export.** Export the deck as a tab-separated file you can import into Anki.
@@ -56,18 +58,33 @@ npm run preview
 
 ```
 src/
-  translate.ts     # provider detection, prompts, JSON validation, fallback logic
+  translate.ts     # shared provider adapters and fallback for both learning tasks
+  learning.ts      # input routing, tutor prompts, task-specific response validation
+  LearningResults.tsx # saveable translation options and Japanese teaching feedback
+  cards.ts         # existing card creation format and scheduling defaults
   sm2.ts           # SM-2 scheduling and due-card selection
   storage.ts       # localStorage persistence for cards
   exportAnki.ts    # TSV export for Anki
-  App.tsx          # translate / deck / review / phrases / settings views
+  App.tsx          # learn / deck / review / phrases / settings views
   ReviewSession.tsx# review flow with furigana rendering
-  types.ts         # Card and API response types
+  types.ts         # Card, task, translation, and Japanese-check response types
 ```
+
+## Checks
+
+Use Node.js 24 or later (the tests use Node’s built-in TypeScript support and test runner):
+
+```bash
+npm test
+npm run lint
+npm run build
+```
+
+Tests mock provider responses; they do not send phrases or keys to live providers. They cover task routing, response validation, all three provider adapters, fallback for both tasks, and saved-card compatibility. The representative feedback fixtures are UI contracts, not a linguistic evaluation of the models.
 
 ## What I'd do next
 
-- Unit tests for the scheduler and response parser
+- Broader unit tests for the scheduler
 - A small eval set of phrase + context pairs to compare models on register accuracy and naturalness
 - Review analytics: retention rate, ease-factor drift, and cards that keep failing
 - Optional sync so the deck survives a cleared browser
