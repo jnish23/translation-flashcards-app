@@ -12,8 +12,8 @@ I wanted a tool where the context is part of the question, and where the answer 
 
 ## What it does
 
-- **Japanese feedback.** Enter your own Japanese and get its interpreted English meaning, separate grammar and naturalness assessments, explanations of corrections, and a chunk-by-chunk breakdown of one recommended version. Already-natural wording is confirmed and preserved. Optionally provide what you meant in English to check whether your attempt conveys it.
-- **Automatic input routing.** The Learn tab defaults to Auto: kana or kanji selects Japanese checking; other input selects translation. Choose Translate or Check Japanese explicitly for romaji or mixed input.
+- **Japanese feedback.** Enter your own Japanese and get its interpreted English meaning, separate grammar and naturalness assessments, explanations of corrections, and a chunk-by-chunk breakdown of one recommended version. Already-natural wording is confirmed and preserved. Use the optional Context / what I mean box for audience, situation, intended English meaning, or any combination. If it only describes audience/register, the tutor does not invent a meaning comparison.
+- **Automatic input routing.** The Learn tab defaults to Auto: kana or kanji selects Japanese checking immediately. For Latin input, the same tutor request distinguishes English from romanized Japanese (romaji) on submission. Romaji attempts are shown in Japanese script alongside the feedback, without rewriting your input as you type. For ambiguous short phrases, Auto prefers English; choose Translate or Check Japanese to override.
 - **Context-aware translation.** Each query takes the phrase plus a context line (who, where, how formal). The default context is "parental casual", since that's my most common situation.
 - **Three options, not one.** Options differ in register and nuance on purpose, and each comes with an explanation.
 - **Save as flashcards.** Japanese checks save the recommendation’s English meaning on the front and natural Japanese plus a short usage note on the back. Detailed teaching stays in the current result until the next request; it is not stored. Save a translation option as a production card (English → Japanese), and optionally add a recognition card (Japanese → English) for the same phrase.
@@ -80,7 +80,7 @@ npm run lint
 npm run build
 ```
 
-Tests mock provider responses; they do not send phrases or keys to live providers. They cover task routing, response validation, all three provider adapters, fallback for both tasks, and saved-card compatibility. The representative feedback fixtures are UI contracts, not a linguistic evaluation of the models.
+Tests mock provider responses; they do not send phrases or keys to live providers. They cover task routing, response validation (including incomplete optional meaning comparisons), all three provider adapters, Auto responses, fallback, and saved-card compatibility. The representative feedback fixtures are UI contracts, not a linguistic evaluation of the models.
 
 ## What I'd do next
 

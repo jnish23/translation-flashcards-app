@@ -5,8 +5,10 @@ A personal Japanese learning tool. English input returns three natural Japanese
 options with nuance notes. Japanese attempts receive an interpreted meaning, grammar
 and naturalness feedback, corrections, and a breakdown of one recommended version.
 Both tasks can save results as SRS flashcards. Auto routes kana/kanji to checking;
-explicit Translate and Check Japanese modes override routing. Checks optionally
-accept intended English. Explanations are in English.
+for Latin input the same tutor call distinguishes English from Japanese in romaji.
+Explicit Translate and Check Japanese modes override routing. One optional Context /
+what I mean box accepts situation notes, intended English, or both. Audience/register
+notes alone are not an intended meaning. Explanations are in English.
 
 ## Stack (do not change mid-project)
 - React with localStorage for persistence (single-user, personal use)
@@ -67,11 +69,16 @@ The English translation call returns this JSON shape:
 Return 3 options. Return ONLY the JSON, no preamble, no markdown fences.
 
 Japanese checking uses the separate `JapaneseCheckResponse` in `src/types.ts`:
+- `originalJapanese` transcribes the attempt into Japanese script without correcting it; the UI shows it when different from the input.
 - `interpretation` and `interpretationNote` state the original meaning and any uncertainty.
-- `grammar`, `naturalness`, and `meaningMatch` contain separate verdicts and explanations.
+- `grammar`, `naturalness`, and `meaningMatch` contain separate verdicts and explanations. An absent or unexplained optional meaning comparison is hidden rather than rejecting otherwise usable feedback.
 - `corrections` distinguishes actual errors, naturalness improvements, and optional style.
 - `recommendation` contains the translation-option fields plus `english` for the card front.
 - `breakdown` contains ordered Japanese chunks, readings, and teaching explanations.
+
+Auto requests return a `{ task: "translate" | "check", response: ... }` envelope
+using the chosen task’s response format. Script checking and explicit modes retain
+their existing response formats. Detection does not require an additional API call.
 
 Preserve already-natural wording when it matches the supplied intent. Use an empty
 corrections array when no change is needed. Both tasks share provider adapters and

@@ -10,16 +10,18 @@ import { check, option, translations, scenarios } from './fixtures.mjs';
 
 test('auto routes scripts and explicit overrides handle romaji and mixed input', () => {
   for (const phrase of ['こんにちは', 'ミズ', '水', 'ｺﾝﾆﾁﾊ', 'I want 水']) assert.equal(resolveTask('auto', phrase), 'check');
-  for (const phrase of ['', 'I want water', 'mizu o nomitai', '123 🙂']) assert.equal(resolveTask('auto', phrase), 'translate');
+  for (const phrase of ['', 'I want water', 'mizu o nomitai', '123 🙂']) assert.equal(resolveTask('auto', phrase), 'auto');
   assert.equal(resolveTask('check', 'mizu o nomitai'), 'check');
   assert.equal(resolveTask('translate', 'I want 水'), 'translate');
 });
 
 test('prompts distinguish tasks, preserve intent, and budget more tokens for teaching', () => {
-  const translation = buildLearningPrompt({ task: 'translate', phrase: 'water', context: 'family', intendedMeaning: 'ignored' });
-  const feedback = buildLearningPrompt({ task: 'check', phrase: '水', context: 'family', intendedMeaning: ' water ' });
+  const translation = buildLearningPrompt({ task: 'translate', phrase: 'water', context: 'family' });
+  const feedback = buildLearningPrompt({ task: 'check', phrase: '水', context: 'I mean I want water; talking to my son' });
   assert.equal(JSON.parse(translation.user).intendedMeaning, undefined);
-  assert.equal(JSON.parse(feedback.user).intendedMeaning, 'water');
+  assert.equal(JSON.parse(feedback.user).context, 'I mean I want water; talking to my son');
+  assert.equal(JSON.parse(buildLearningPrompt({ task: 'check', phrase: '水', context: '' }).user).context, 'parental casual');
+  assert.match(feedback.system, /Audience\/register notes alone/);
   assert.ok(feedback.maxTokens > translation.maxTokens);
   assert.match(feedback.system, /keep its wording unchanged/);
   assert.match(feedback.system, /do not silently invent intent/);
@@ -46,13 +48,34 @@ test('rejects incomplete teaching fields, invalid verdicts, and malformed arrays
     { ...check, corrections: [{ ...check.corrections[0], kind: 'wrong' }] },
     { ...check, breakdown: [] },
     { ...check, breakdown: [{ text: '水', reading: null, explanation: 'water' }] },
-    { ...check, meaningMatch: { verdict: 'differs', explanation: '' } },
   ];
   for (const bad of invalid) assert.throws(() => parseLearningResponse(JSON.stringify(bad), 'check'), /Unexpected response/);
-  for (const field of Object.keys(check)) {
+  for (const field of Object.keys(check).filter(field => field !== 'meaningMatch')) {
     const bad = { ...check }; delete bad[field];
     assert.throws(() => parseLearningResponse(JSON.stringify(bad), 'check'), /Unexpected response/);
   }
+});
+
+test('missing or unexplained optional meaning comparison does not discard Japanese feedback', () => {
+  for (const value of [undefined, null, { verdict: 'matches', explanation: '' }, { verdict: 'differs', explanation: '   ' }, { verdict: 'uncertain' }, { verdict: 'matches', explanation: null }]) {
+    const result = parseLearningResponse(JSON.stringify({ ...check, meaningMatch: value }), 'check');
+    assert.deepEqual(result.response.meaningMatch, { verdict: 'not_provided', explanation: '' });
+    assert.deepEqual(result.response.recommendation, check.recommendation);
+    assert.deepEqual(result.response.breakdown, check.breakdown);
+  }
+});
+
+test('Auto accepts either task and validates the selected response', () => {
+  for (const [task, response] of [['check', { ...check, originalJapanese: '水を飲むたい' }], ['translate', translations]]) {
+    assert.deepEqual(parseLearningResponse(JSON.stringify({ task, response }), 'auto'), { task, response });
+  }
+  assert.throws(() => parseLearningResponse(JSON.stringify({ task: 'unknown', response: check }), 'auto'), /invalid task/);
+  assert.throws(() => parseLearningResponse(JSON.stringify({ task: 'translate', response: check }), 'auto'), /exactly 3/);
+  assert.throws(() => parseLearningResponse(JSON.stringify({ task: 'check', response: translations }), 'auto'), /Unexpected response/);
+  const prompt = buildLearningPrompt({ task: 'auto', phrase: 'mizu o nomitai', context: '' });
+  assert.match(prompt.system, /romaji/);
+  assert.match(prompt.system, /genuinely ambiguous short Latin input prefer English/);
+  assert.match(prompt.system, /originalJapanese/);
 });
 
 function providerResponse(url, payload) {
@@ -62,9 +85,9 @@ function providerResponse(url, payload) {
   return Response.json({ choices: [{ finish_reason: 'stop', message: { content: raw } }] });
 }
 
-for (const task of ['translate', 'check']) {
+for (const task of ['translate', 'check', 'auto']) {
   test(`${task}: all provider adapters send the task prompt and parse results`, async (t) => {
-    const payload = task === 'check' ? check : translations;
+    const payload = task === 'auto' ? { task: 'check', response: check } : task === 'check' ? check : translations;
     const requests = [];
     t.mock.method(globalThis, 'fetch', async (url, init) => {
       requests.push(JSON.parse(init.body));
@@ -72,27 +95,27 @@ for (const task of ['translate', 'check']) {
     });
     for (const key of ['sk-test-primary', 'sk-ant-test-primary', 'google-test-primary']) {
       const result = await requestLearning({ task, phrase: 'test', context: 'family' }, key);
-      assert.equal(result.task, task);
-      assert.deepEqual(result.response, payload);
+      assert.equal(result.task, task === 'auto' ? 'check' : task);
+      assert.deepEqual(result.response, task === 'auto' ? check : payload);
     }
     for (const body of requests) {
-      assert.equal(body.max_tokens ?? body.generationConfig.maxOutputTokens, task === 'check' ? 4096 : 1024);
+      assert.equal(body.max_tokens ?? body.generationConfig.maxOutputTokens, task === 'translate' ? 1024 : 4096);
     }
   });
 
   test(`${task}: fallback preserves the request and handles backup failure`, async (t) => {
     const requests = [];
-    const payload = task === 'check' ? check : translations;
+    const payload = task === 'auto' ? { task: 'check', response: check } : task === 'check' ? check : translations;
     const fetchMock = t.mock.method(globalThis, 'fetch', async (url, init) => {
       const body = JSON.parse(init.body); requests.push(body);
       if (String(url).includes('deepseek.com')) return Response.json({ error: { message: 'empty balance' } }, { status: 402 });
       return providerResponse(url, payload);
     });
-    const request = { task, phrase: '水を飲むたい', context: 'family', intendedMeaning: 'I want water' };
+    const request = { task, phrase: '水を飲むたい', context: 'I mean I want water; talking to family' };
     const outcome = await requestLearningWithFallback(request, 'sk-test-primary', 'google-test-backup');
     assert.deepEqual(outcome.fallback, { from: 'deepseek', reason: 'out of balance' });
     assert.equal(outcome.provider, 'google');
-    assert.deepEqual(outcome.result.response, payload);
+    assert.deepEqual(outcome.result.response, task === 'auto' ? check : payload);
     assert.equal(requests[0].messages[1].content, requests[1].contents[0].parts[0].text);
     fetchMock.mock.mockImplementation(async () => { throw new Error('Failed to fetch'); });
     await assert.rejects(requestLearningWithFallback(request, 'sk-primary', 'google-backup'), /Backup.*also failed/);

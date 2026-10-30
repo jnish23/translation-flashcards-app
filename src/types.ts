@@ -14,13 +14,13 @@ export type LearningTask = 'translate' | 'check';
 export type InputMode = 'auto' | LearningTask;
 
 export interface LearningRequest {
-  task: LearningTask;
+  task: InputMode;
   phrase: string;
   context: string;
-  intendedMeaning?: string;
 }
 
 export interface JapaneseCheckResponse {
+  originalJapanese?: string;
   interpretation: string;
   interpretationNote: string;
   grammar: { verdict: 'correct' | 'needs_work' | 'uncertain'; explanation: string };

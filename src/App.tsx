@@ -6,7 +6,7 @@ import {
   PROVIDER_LABEL,
 } from './translate';
 import type { TranslationOption, Card, InputMode, LearningRequest, LearningResult } from './types';
-import { resolveTask } from './learning';
+import { resolveTask, DEFAULT_CONTEXT } from './learning';
 import { makeCard } from './cards';
 import { OptionCard, JapaneseFeedback } from './LearningResults';
 import { loadCards, persistCard, removeCard, updateCard } from './storage';
@@ -19,10 +19,6 @@ import './App.css';
 // backups existed carries over as the primary.
 const API_KEY_STORAGE = 'apiKey';
 const BACKUP_KEY_STORAGE = 'apiKeyBackup';
-
-// Used whenever the context box is left empty. Applied when translating rather
-// than pre-filled, so clearing the box still falls back to it.
-const DEFAULT_CONTEXT = 'parental casual';
 
 function readKeys(): { primary: string | null; backup: string | null } {
   const primary = localStorage.getItem(API_KEY_STORAGE);
@@ -370,7 +366,6 @@ export default function App() {
   const [phrase, setPhrase] = useState('');
   const [context, setContext] = useState('');
   const [mode, setMode] = useState<InputMode>('auto');
-  const [intendedMeaning, setIntendedMeaning] = useState('');
   const [result, setResult] = useState<LearningResult | null>(null);
   const requestInFlight = useRef(false);
   const isComposing = useRef(false);
@@ -406,7 +401,6 @@ export default function App() {
       task,
       phrase: phrase.trim(),
       context: context.trim() || DEFAULT_CONTEXT,
-      ...(task === 'check' ? { intendedMeaning: intendedMeaning.trim() } : {}),
     };
 
     try {
@@ -422,10 +416,8 @@ export default function App() {
           : null,
       );
       setSubmitted(request);
-      // Clear this attempt and its intent, but keep the shared context
-      // for the next phrase until explicitly cleared.
+      // Keep the shared notes for the next phrase until explicitly cleared.
       setPhrase('');
-      setIntendedMeaning('');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -552,7 +544,7 @@ export default function App() {
               </fieldset>
               <p className="input-hint" role="status">
                 {mode === 'auto'
-                  ? `Auto: ${task === 'check' ? 'checking your Japanese' : 'translating into Japanese'}. Choose a mode for romaji or mixed input.`
+                  ? task === 'check' ? 'Auto: checking your Japanese.' : 'Auto recognizes English or Japanese, including romaji, when you submit. Use a mode to override.'
                   : task === 'check' ? 'Get feedback on your grammar, meaning, and naturalness.' : 'Get three natural Japanese options.'}
               </p>
               <label htmlFor="phrase" className="input-label">
@@ -561,7 +553,7 @@ export default function App() {
               <textarea
                 id="phrase"
                 className="input-textarea"
-                placeholder={task === 'check' ? 'e.g. 返事が遅くなってごめんね' : "English or Japanese, e.g. I'm sorry for the late reply"}
+                placeholder={task === 'check' ? 'e.g. 返事が遅くなってごめんね' : 'English, Japanese, or romaji — e.g. mizu o nomitai'}
                 value={phrase}
                 onChange={(e) => setPhrase(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -571,29 +563,9 @@ export default function App() {
                 rows={3}
               />
 
-              {task === 'check' && (
-                <>
-                  <label htmlFor="intended-meaning" className="input-label input-label--optional">
-                    What I mean in English <span className="optional-tag">optional</span>
-                  </label>
-                  <textarea
-                    id="intended-meaning"
-                    className="input-textarea input-textarea--context"
-                    placeholder="Leave empty and I’ll explain what your Japanese conveys"
-                    value={intendedMeaning}
-                    onChange={(e) => setIntendedMeaning(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    onCompositionStart={() => { isComposing.current = true; }}
-                    onCompositionEnd={() => { isComposing.current = false; }}
-                    disabled={loading}
-                    rows={2}
-                  />
-                </>
-              )}
-
               <div className="input-label-row">
                 <label htmlFor="context" className="input-label">
-                  Context{' '}
+                  Context / what I mean{' '}
                   <span className="optional-tag">optional</span>
                 </label>
                 {context.trim() && (
@@ -610,7 +582,7 @@ export default function App() {
               <textarea
                 id="context"
                 className="input-textarea input-textarea--context"
-                placeholder={`Empty = “${DEFAULT_CONTEXT}”. Or e.g. email to my boss`}
+                placeholder={`e.g. “I mean I want water” or “talking to my son.” Empty = “${DEFAULT_CONTEXT}”.`}
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -626,7 +598,7 @@ export default function App() {
                   onClick={handleSubmit}
                   disabled={loading || !phrase.trim()}
                 >
-                  {loading ? (task === 'check' ? 'Checking…' : 'Translating…') : task === 'check' ? 'Check Japanese' : 'Translate'}
+                  {loading ? (task === 'check' ? 'Checking…' : task === 'translate' ? 'Translating…' : 'Working…') : task === 'check' ? 'Check Japanese' : task === 'translate' ? 'Translate' : 'Get help'}
                 </button>
                 <span className="keyboard-hint">⌘ / Ctrl + Enter to submit</span>
               </div>
@@ -646,9 +618,6 @@ export default function App() {
                     these options were generated from. */}
                 <p className="results-prompt">
                   {submitted.phrase}
-                  {submitted.intendedMeaning && (
-                    <span className="results-prompt__context">Intended meaning: {submitted.intendedMeaning}</span>
-                  )}
                   {submitted.context && (
                     <span className="results-prompt__context">
                       {submitted.context}
@@ -662,7 +631,7 @@ export default function App() {
                   </p>
                 )}
                 {result.task === 'check' ? (
-                  <JapaneseFeedback response={result.response} onSave={handleSave} />
+                  <JapaneseFeedback response={result.response} originalPhrase={submitted.phrase} onSave={handleSave} />
                 ) : (
                   <div className="options-grid">
                     {result.response.options.map((opt, i) => (

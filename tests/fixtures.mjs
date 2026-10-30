@@ -49,7 +49,7 @@ export const scenarios = [
     corrections: [], recommendation: { ...option, kanji: '大丈夫', reading: 'だいじょうぶ', romaji: 'daijoubu', english: 'I’m okay.' },
     breakdown: [{ text: '大丈夫', reading: 'だいじょうぶ', explanation: 'A common expression of reassurance; context also allows a polite refusal.' }],
   } },
-  { name: 'intended meaning differs', phrase: '水を飲んだ', intendedMeaning: 'I want to drink water.', response: {
+  { name: 'intended meaning differs', phrase: '水を飲んだ', context: 'I mean I want to drink water.', response: {
     ...check, interpretation: 'I drank water.',
     grammar: { verdict: 'correct', explanation: 'The past-tense sentence is grammatical.' },
     naturalness: { verdict: 'natural', explanation: 'This is natural, but expresses a completed action rather than a desire.' },

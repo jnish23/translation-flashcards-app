@@ -62,12 +62,19 @@ const CORRECTION_LABELS = {
   style: 'Optional style choice',
 };
 
-export function JapaneseFeedback({ response, onSave }: {
+export function JapaneseFeedback({ response, originalPhrase, onSave }: {
   response: JapaneseCheckResponse;
+  originalPhrase: string;
   onSave: (option: TranslationOption, addRecognition: boolean) => void;
 }) {
   return (
     <div className="japanese-feedback">
+      {response.originalJapanese && response.originalJapanese !== originalPhrase && (
+        <section className="feedback-panel">
+          <h3>Your attempt in Japanese</h3>
+          <p lang="ja">{response.originalJapanese}</p>
+        </section>
+      )}
       <section className="feedback-panel">
         <h3>What your Japanese conveys</h3>
         <p>{response.interpretation}</p>
