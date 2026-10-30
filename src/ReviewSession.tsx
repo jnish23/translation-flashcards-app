@@ -61,7 +61,7 @@ export function ReviewSession({
         <p>No cards due right now.</p>
         {cards.length === 0 && (
           <p className="review-empty__hint">
-            Save cards from the Translate tab to start reviewing.
+            Save cards from the Learn tab to start reviewing.
           </p>
         )}
       </div>

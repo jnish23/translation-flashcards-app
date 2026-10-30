@@ -1,8 +1,14 @@
 # Project: Japanese SRS Translator
 
 ## What this is
-A personal tool. I ask how to say something in natural Japanese with context, an LLM
-returns a few options with nuance notes, and I can save options as SRS flashcards.
+A personal Japanese learning tool. English input returns three natural Japanese
+options with nuance notes. Japanese attempts receive an interpreted meaning, grammar
+and naturalness feedback, corrections, and a breakdown of one recommended version.
+Both tasks can save results as SRS flashcards. Auto routes kana/kanji to checking;
+for Latin input the same tutor call distinguishes English from Japanese in romaji.
+Explicit Translate and Check Japanese modes override routing. One optional Context /
+what I mean box accepts situation notes, intended English, or both. Audience/register
+notes alone are not an intended meaning. Explanations are in English.
 
 ## Stack (do not change mid-project)
 - React with localStorage for persistence (single-user, personal use)
@@ -15,11 +21,13 @@ returns a few options with nuance notes, and I can save options as SRS flashcard
 ## Card schema (canonical — never deviate without updating this file)
 Card {
   id: uuid
-  front: string          // English prompt + the context I gave
-  back_kanji: string
-  back_reading: string   // kana, used for furigana render
-  back_romaji: string    // optional
-  notes: string          // the nuance explanation from the LLM
+  prompt: string        // English source phrase or recommendation's English meaning
+  context: string       // context supplied, or default "parental casual"
+  kanji: string
+  reading: string       // kana, used for furigana render
+  romaji: string
+  register: string
+  nuance: string        // short usage note; detailed feedback is not persisted
   card_type: "production" | "recognition"
   interval: number       // days
   ease_factor: number    // default 2.5
@@ -44,7 +52,9 @@ Card {
   11pm and due "tomorrow" should NOT reappear until the next calendar day
 - The review queue is computed fresh each time the review screen opens
 
-## LLM response format (the translation call must return exactly this JSON)
+## LLM response formats
+
+The English translation call returns this JSON shape:
 {
   "options": [
     {
@@ -52,11 +62,29 @@ Card {
       "reading": "たべたいです",
       "romaji": "tabetai desu",
       "register": "polite",
-      "notes": "Safe for most contexts with people you don't know well"
+      "nuance": "Safe for most contexts with people you don't know well"
     }
   ]
 }
 Return 3 options. Return ONLY the JSON, no preamble, no markdown fences.
+
+Japanese checking uses the separate `JapaneseCheckResponse` in `src/types.ts`:
+- `originalJapanese` transcribes the attempt into Japanese script without correcting it; the UI shows it when different from the input.
+- `interpretation` and `interpretationNote` state the original meaning and any uncertainty.
+- `grammar`, `naturalness`, and `meaningMatch` contain separate verdicts and explanations. An absent or unexplained optional meaning comparison is hidden rather than rejecting otherwise usable feedback.
+- `corrections` distinguishes actual errors, naturalness improvements, and optional style.
+- `recommendation` contains the translation-option fields plus `english` for the card front.
+- `breakdown` contains ordered Japanese chunks, readings, and teaching explanations.
+
+Auto requests return a `{ task: "translate" | "check", response: ... }` envelope
+using the chosen task’s response format. Script checking and explicit modes retain
+their existing response formats. Detection does not require an additional API call.
+
+Preserve already-natural wording when it matches the supplied intent. Use an empty
+corrections array when no change is needed. Both tasks share provider adapters and
+fallback behavior. Prompts and runtime response validation live in `src/learning.ts`.
+Do not store the detailed teaching response in cards or change the persisted card
+schema. No migration is needed for cards created before Japanese checking existed.
 
 ## Working rules for Claude Code
 - Read this file before writing any code each session.

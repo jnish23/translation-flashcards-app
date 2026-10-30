@@ -72,6 +72,74 @@
   gap: 8px;
 }
 
+.input-mode {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.input-mode__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mode-choice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.mode-choice--active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--text-h);
+}
+
+.mode-choice input { accent-color: var(--accent); }
+.input-mode:disabled .mode-choice { cursor: wait; opacity: 0.6; }
+.input-hint { font-size: 0.82rem; line-height: 1.5; margin-bottom: 12px; }
+.input-textarea:disabled { opacity: 0.65; }
+
+.japanese-feedback { display: flex; flex-direction: column; gap: 18px; }
+.feedback-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  font-size: 0.9rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.feedback-panel h3, .feedback-heading {
+  font-size: 0.95rem;
+  color: var(--text-h);
+  margin: 0 0 8px;
+}
+.feedback-panel p + h3 { margin-top: 18px; }
+.feedback-note { margin-top: 10px; border-left: 3px solid var(--accent); padding-left: 12px; }
+.feedback-list { margin: 0; padding-left: 20px; }
+.feedback-list li + li { margin-top: 16px; }
+.feedback-label { font-size: 0.8rem; color: var(--accent); }
+.feedback-change, .feedback-chunk { color: var(--text-h); margin-bottom: 4px; }
+.feedback-chunk span { font-size: 0.85rem; color: var(--text); margin-left: 6px; }
+.option-card__english { margin-bottom: 10px; color: var(--text-h); font-size: 0.95rem; }
+
+@media (max-width: 640px) {
+  .app { padding: 24px 16px 60px; }
+  .app__nav { display: flex; flex-wrap: wrap; justify-content: center; }
+  .nav-tab { padding: 6px 10px; }
+  .option-card__japanese { flex-direction: column; gap: 4px; }
+  .option-card__kanji { overflow-wrap: anywhere; line-height: 1.5; }
+  .option-card__actions, .translate-row { flex-wrap: wrap; }
+}
+
 .input-label {
   font-weight: 500;
   font-size: 0.9rem;

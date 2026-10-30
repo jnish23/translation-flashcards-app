@@ -14,7 +14,7 @@ export default defineConfig({
         name: 'Japanese Flashcards',
         short_name: 'Flashcards',
         description:
-          'Ask for natural Japanese with context, save the options as SRS flashcards.',
+          'Translate English or get feedback on your Japanese, then save natural phrases as SRS flashcards.',
         lang: 'en',
         start_url: '/',
         scope: '/',
