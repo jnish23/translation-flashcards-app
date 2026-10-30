@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   requestLearningWithFallback,
   validateApiKey,
@@ -14,6 +14,9 @@ import { getDueCards } from './sm2';
 import { ReviewSession } from './ReviewSession';
 import { exportToAnki } from './exportAnki';
 import './App.css';
+import { Languages, Layers, BookOpen, Settings, Bookmark, ArrowUpRight } from 'lucide-react';
+import { installAndroidBack, openExternal } from './native';
+import { BackupControls } from './BackupControls';
 
 // The primary key keeps the original storage name, so a key saved before
 // backups existed carries over as the primary.
@@ -49,7 +52,7 @@ function DeckView({
         <p className="deck-count">
           {cards.length} card{cards.length !== 1 ? 's' : ''}
         </p>
-        <button className="export-btn" onClick={() => exportToAnki(cards)}>
+        <button className="export-btn" onClick={() => void exportToAnki(cards).catch((error: unknown) => alert(error instanceof Error ? error.message : String(error)))}>
           Export to Anki
         </button>
       </div>
@@ -304,14 +307,12 @@ function SettingsView({ onKeyChange }: { onKeyChange: () => void }) {
       <h2 className="settings-heading">Settings</h2>
 
       <p className="settings-hint">
-        Translations and Japanese checks run on your own API key, so you'll need one of these. Keys
-        are stored only in this browser and go straight to the provider — they
-        are never sent anywhere else.
+        Translations and Japanese checks run on your own API key, so you'll need one of these. Keys are stored locally on this device and sent directly to the provider. Local storage is not an encrypted vault. Browser and Android storage are separate; enter your keys again after moving devices.
       </p>
 
       <ul className="key-sources">
         <li>
-          <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">
+          <a onClick={openExternal} href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">
             DeepSeek Platform
           </a>
           <span className="key-sources__note">
@@ -320,7 +321,7 @@ function SettingsView({ onKeyChange }: { onKeyChange: () => void }) {
           </span>
         </li>
         <li>
-          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer">
+          <a onClick={openExternal} href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer">
             Google AI Studio
           </a>
           <span className="key-sources__note">
@@ -328,7 +329,7 @@ function SettingsView({ onKeyChange }: { onKeyChange: () => void }) {
           </span>
         </li>
         <li>
-          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
+          <a onClick={openExternal} href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
             Anthropic Console
           </a>
           <span className="key-sources__note">
@@ -465,51 +466,27 @@ export default function App() {
     setCards(updateCard(card));
   }
 
+  useEffect(() => installAndroidBack(() => view, () => setView('translate')), [view]);
+
   const dueCount = getDueCards(cards).length;
 
   return (
     <div className="app">
       <header className="app__header">
-        <h1>Japanese Flashcards</h1>
-        <nav className="app__nav">
-          <button
-            className={`nav-tab${view === 'translate' ? ' nav-tab--active' : ''}`}
-            onClick={() => setView('translate')}
-          >
-            Learn
-          </button>
-          <button
-            className={`nav-tab${view === 'deck' ? ' nav-tab--active' : ''}`}
-            onClick={() => setView('deck')}
-          >
-            Deck
-            {cards.length > 0 && (
-              <span className="nav-tab__badge">{cards.length}</span>
-            )}
-          </button>
-          <button
-            className={`nav-tab${view === 'review' ? ' nav-tab--active' : ''}`}
-            onClick={() => setView('review')}
-          >
-            Review
-            {dueCount > 0 && (
-              <span className="nav-tab__badge nav-tab__badge--due">{dueCount}</span>
-            )}
-          </button>
-          <button
-            className={`nav-tab${view === 'phrases' ? ' nav-tab--active' : ''}`}
-            onClick={() => setView('phrases')}
-          >
-            Phrases
-          </button>
-          <button
-            className={`nav-tab${view === 'settings' ? ' nav-tab--active' : ''}`}
-            onClick={() => setView('settings')}
-          >
-            Settings
-          </button>
-        </nav>
+        <div className="brand-mark" aria-hidden="true">言</div>
+        <div><p className="eyebrow">JAPANESE FLASHCARDS</p><h1>{{ translate: 'Find your words', review: 'A little practice', deck: 'Your collection', phrases: 'Words to keep', settings: 'Make it yours' }[view]}</h1></div>
+        <span className="header-note">日々のことば</span>
       </header>
+      <nav className="app__nav" aria-label="Main navigation">
+        {([
+          ['translate', 'Translate', Languages], ['review', 'Review', BookOpen],
+          ['deck', 'Deck', Layers], ['phrases', 'Phrases', Bookmark], ['settings', 'Settings', Settings],
+        ] as const).map(([destination, label, Icon]) => <button key={destination}
+          className={`nav-tab${view === destination ? ' nav-tab--active' : ''}`}
+          aria-current={view === destination ? 'page' : undefined} onClick={() => setView(destination)}>
+          <span className="nav-icon"><Icon size={21} strokeWidth={1.7}/>{((destination === 'review' && dueCount > 0) || (destination === 'deck' && cards.length > 0)) && <span className="nav-tab__badge">{destination === 'review' ? dueCount : cards.length}</span>}</span>
+          <span>{label}</span></button>)}
+      </nav>
 
       <main className="app__main">
         {view === 'translate' && (
@@ -530,6 +507,7 @@ export default function App() {
               </div>
             )}
 
+            <div className="intro"><span className="eyebrow">A THOUGHT, IN ANOTHER LANGUAGE</span><p>Natural Japanese, for the moments that matter.</p></div>
             <section className="input-section" aria-busy={loading}>
               <fieldset className="input-mode" disabled={loading}>
                 <legend className="input-label">How can I help?</legend>
@@ -599,6 +577,7 @@ export default function App() {
                   disabled={loading || !phrase.trim()}
                 >
                   {loading ? (task === 'check' ? 'Checking…' : task === 'translate' ? 'Translating…' : 'Working…') : task === 'check' ? 'Check Japanese' : task === 'translate' ? 'Translate' : 'Get help'}
+                  <ArrowUpRight size={18} aria-hidden="true"/>
                 </button>
                 <span className="keyboard-hint">⌘ / Ctrl + Enter to submit</span>
               </div>
@@ -657,7 +636,7 @@ export default function App() {
         )}
 
         {view === 'settings' && (
-          <SettingsView onKeyChange={() => setHasKey(!!readKeys().primary)} />
+          <><SettingsView onKeyChange={() => setHasKey(!!readKeys().primary)} /><BackupControls onImport={() => setCards(loadCards())} /></>
         )}
       </main>
     </div>

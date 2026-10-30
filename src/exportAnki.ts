@@ -1,10 +1,11 @@
+import { exportFile } from './native';
 import type { Card } from './types';
 
 function sanitizeField(s: string): string {
   return s.replace(/[\t\r\n]+/g, ' ').trim();
 }
 
-export function exportToAnki(cards: Card[]): void {
+export async function exportToAnki(cards: Card[]): Promise<void> {
   const rows = cards.map((card) => {
     const front = card.context
       ? sanitizeField(`${card.prompt} (${card.context})`)
@@ -18,11 +19,5 @@ export function exportToAnki(cards: Card[]): void {
   });
 
   const tsv = rows.join('\n');
-  const blob = new Blob([tsv], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'japanese-srs-export.txt';
-  a.click();
-  URL.revokeObjectURL(url);
+  await exportFile('japanese-srs-export.txt', tsv, 'text/plain;charset=utf-8');
 }

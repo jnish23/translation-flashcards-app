@@ -8,20 +8,34 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "node --test tests/learning.test.mjs"
+    "build:android": "tsc -b && vite build --mode android",
+    "android:sync": "npm run build:android && cap sync android",
+    "android:open": "npm run android:sync && cap open android",
+    "android:debug": "npm run android:sync && cd android && ./gradlew assembleDebug",
+    "test": "node --import tsx --test tests/learning.test.mjs tests/*.test.ts",
+    "test:ui": "playwright test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.107.0",
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
     "@google/generative-ai": "^0.24.1",
+    "lucide-react": "^1.65.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
+    "@playwright/test": "^1.64.1",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "oxlint": "^1.69.0",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "vite": "^8.1.0",
     "vite-plugin-pwa": "^1.3.0"

@@ -2,7 +2,7 @@
 
 A personal Japanese learning tool: translate English into natural Japanese, check your own Japanese attempts, and save useful phrases as SRS flashcards.
 
-It runs entirely in the browser, which you can access as an app on Android. There's no backend, no account, and nothing leaves your machine except the translation request to the LLM provider you choose.
+It runs as a web/PWA app or a bundled Capacitor Android app. There's no backend, no account, and nothing leaves your machine except the translation request to the LLM provider you choose.
 
 ## Why I built it
 
@@ -88,4 +88,46 @@ Tests mock provider responses; they do not send phrases or keys to live provider
 - A small eval set of phrase + context pairs to compare models on register accuracy and naturalness
 - Review analytics: retention rate, ease-factor drift, and cards that keep failing
 - Optional sync so the deck survives a cleared browser
-- Android/Apple app 
+- Apple app
+
+## Install on your Android phone
+
+1. Install [Android Studio](https://developer.android.com/studio) 2025.2.1 or newer. Let its setup wizard install the Android SDK and bundled JDK. This project uses Capacitor 8.6, Java 21, compile/target SDK 36, minimum SDK 24 (Android 7).
+2. In Android Studio → Settings → Android SDK, install Android SDK Platform 36, SDK Build Tools, and Platform Tools. Set Gradle JDK to the bundled JDK (21 or newer).
+3. In this project, run `npm ci` then `npm run android:open`. This builds the Android interface, syncs plugins/assets, and opens the native project. Let Gradle finish syncing.
+4. On your phone, enable Developer options (tap Build number seven times in Settings → About phone), then enable USB debugging. Connect by USB and accept the debugging authorization on your phone.
+5. Choose your phone in Android Studio's device selector and press Run. The app installs with its own launcher icon.
+
+For a transferable debug APK, run `npm run android:debug`. The file is `android/app/build/outputs/apk/debug/app-debug.apk`. On macOS command-line builds may need:
+
+```sh
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export PATH="$ANDROID_HOME/platform-tools:$PATH"
+npm run android:debug
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Alternatively copy the APK to your phone, open it, and allow installation from that source if Android requests it. USB/Android Studio installation is the recommended development route. Device-managed installation restrictions may vary.
+
+## Move your existing cards
+
+Open the updated web app on the **same URL/browser where your cards are stored**. Settings → Export card backup. Transfer that JSON file to your phone, then in the Android app choose Settings → Import card backup. Every card field, including scheduling history, is preserved. Existing IDs win; duplicates are skipped and counts are shown. Invalid files are rejected before saving. Anki export remains available but is not a full backup.
+
+Browser and Android storage are separate. Enter your provider keys again in Android Settings. Keys are kept in localStorage and sent directly to providers; this is not encrypted secure storage. JSON card backups exclude credentials. Android automatic app backup is disabled to avoid backing up keys. Keep your JSON backups safe: uninstalling or clearing application storage removes local cards and keys.
+
+## Personal release and updates
+
+For a durable personal release, run `npm run android:open`, then Android Studio → Build → Generate Signed App Bundle / APK → APK. Create a keystore **outside this repository**, store its passwords safely, and choose the release build. Keep the keystore backed up: future APKs must use the same application ID and signing key. Increment `versionCode` and `versionName` in `android/app/build.gradle` before releasing an update. Never commit keys, signing passwords, or `local.properties`.
+
+Install signed updates with `adb install -r /absolute/path/to/release.apk`. Debug and release signatures differ, so a first switch from debug to release may require uninstalling the debug app: export your cards first and import them afterward. Android updates require rebuilding and reinstalling; web/PWA service-worker updates do not update the native app.
+
+## Android checks
+
+```sh
+npm run android:sync
+npx playwright install chromium
+npm run test:ui
+```
+
+Native HTTP, external links, Back, keyboard insets, offline cold launch and file sharing still require Android device testing.
